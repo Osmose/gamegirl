@@ -1,0 +1,13 @@
+*.pyc
+/build/
+/dist/
+gamegirl.egg-info/
+docs/_build
+MANIFEST
+.DS_Store
+virtualenv/
+*.egg
+.tox
+tmp
+node_modules
+tags
