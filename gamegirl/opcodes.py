@@ -66,8 +66,7 @@ def load_indirect_decrement(cycles, register, get_value, cpu):
     value = getattr(cpu, register)
     setattr(cpu, register, value - 2)
 
-    log[0:2] = 'LDD'
-    return log
+    return log.replace('LD', 'LDD')
 
 
 def push_short(cycles, register, cpu):
@@ -81,13 +80,50 @@ def push_short(cycles, register, cpu):
 def xor(cycles, get_value, cpu):
     value, debug_value = get_value(cpu)
     cpu.A = cpu.A ^ value
+    cpu.cycle(cycles)
+
     cpu.flag_Z = cpu.A == 0
     cpu.flag_N = 0
     cpu.flag_H = 0
     cpu.flag_CY = 0
-    cpu.cycle(cycles)
 
     return 'XOR {0}'.format(debug_value)
+
+
+def swap(value, cpu):
+    result = (value >> 4) & (value << 4)
+    cpu.flag_Z = result == 0
+    cpu.flag_N = 0
+    cpu.flag_H = 0
+    cpu.flag_CY = 0
+    return result
+
+
+def swap_register(cycles, register, cpu):
+    value = getattr(cpu, register)
+    result = swap(value, cpu)
+    setattr(cpu, register, result)
+    cpu.cycle(cycles)
+
+    return 'SWAP {0}'.format(register)
+
+
+def swap_indirect(cycles, register, cpu):
+    address = getattr(cpu, register)
+    value = cpu.memory.read_byte(address)
+    result = swap(value, cpu)
+    cpu.memory.write_byte(address, result)
+    cpu.cycle(cycles)
+
+    return 'SWAP ({0})'.format(register)
+
+
+def cb_dispatch(cpu):
+    opcode = cpu.read_next_byte()
+    try:
+        return CB_OPCODES[opcode](cpu)
+    except KeyError:
+        raise ValueError('Invalid CB opcode: 0x{0:02x}'.format(opcode))
 
 
 OPCODES = {
@@ -184,4 +220,18 @@ OPCODES = {
     0x36: partial(load_indirect, 12, 'HL', get_immediate_byte),
 
     0x32: partial(load_indirect_decrement, 8, 'HL', get_register_A),
+
+    0xcb: cb_dispatch,
+}
+
+
+CB_OPCODES = {
+    0x37: partial(swap_register, 8, 'A'),
+    0x30: partial(swap_register, 8, 'B'),
+    0x31: partial(swap_register, 8, 'C'),
+    0x32: partial(swap_register, 8, 'D'),
+    0x33: partial(swap_register, 8, 'E'),
+    0x34: partial(swap_register, 8, 'H'),
+    0x35: partial(swap_register, 8, 'L'),
+    0x36: partial(swap_indirect, 16, 'HL'),
 }

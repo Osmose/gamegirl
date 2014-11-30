@@ -103,6 +103,7 @@ class Memory(object):
 
         self.wram = Ram(8 * 1024)
         self.stack = Ram(127)
+        self.lcd_ram = Ram(8 * 1024)
 
     def read_string(self, address, length):
         memory, offset = self._get_memory(address, address + length)
@@ -137,6 +138,10 @@ class Memory(object):
         # Game cart ROM
         if start_address < end_address <= 0x8000:
             return self.rom, 0
+
+        # LCD RAM
+        if 0x8000 <= start_address < end_address <= 0xa000:
+            return self.lcd_ram, 0x8000
 
         # Working RAM
         if 0xc000 <= start_address < end_address <= 0xe000:
