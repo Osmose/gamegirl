@@ -2,14 +2,15 @@
 """
 Execute a GameBoy ROM.
 
-Usage: gamegirl FILENAME
+Usage: gamegirl FILENAME [options]
 
 Options:
-  --help                  Show this screen.
-  --version               Show version.
+  --help           Show this screen.
+  --version        Show version.
+  --bios FILENAME  Path to Gameboy BIOS ROM. [default: bios.gb]
+  --debug          Output logging for debugging.
 """
 import struct
-from ctypes import c_ubyte, c_ushort
 
 from docopt import docopt
 
@@ -21,18 +22,29 @@ class ReadableMemory(object):
     def unpack(self, format_string, address, length):
         return struct.unpack(format_string, self.raw_data[address:address + length])
 
-    def string(self, address, length):
+    def read_string(self, address, length):
         return self.unpack('<{0}s'.format(length), address, length)[0]
 
-    def short(self, address):
-        return self.unpack('<h', address, 2)[0]
+    def read_short(self, address):
+        return self.unpack('<H', address, 2)[0]
 
-    def ubyte(self, address):
+    def read_byte(self, address):
         return self.unpack('<B', address, 1)[0]
 
-    def ubytes(self, start_address, end_address):
+    def read_bytes(self, start_address, end_address):
         count = end_address - start_address
         return self.unpack('<{0}B'.format(count), start_address, count)
+
+
+class WriteableMemory(object):
+    def pack_into(self, format_string, address, *values):
+        struct.pack_into(format_string, self.raw_data, address, *values)
+
+    def write_short(self, address, value):
+        return self.pack_into('<H', address, value)
+
+    def write_byte(self, address, value):
+        return self.pack_into('<B', address, value)
 
 
 class Rom(ReadableMemory):
@@ -58,73 +70,128 @@ class Rom(ReadableMemory):
         self.rom_data = rom_data
 
         # Pull data from header.
-        self.title = self.string(0x134, 11)
-        self.start_address = self.short(0x102)
-        self.game_code = self.string(0x13f, 4)
-        self.gbc_compatible = self.ubyte(0x143)
-        self.maker_code = self.string(0x144, 2)
-        self.super_gameboy = bool(self.ubyte(0x146))
-        self.rom_size = self.ROM_SIZES[self.ubyte(0x148)]
-        self.destination = self.ubyte(0x14a)
-        self.mask_rom_version = self.ubyte(0x14c)
-        self.checksum = self.short(0x14e)
+        self.title = self.read_string(0x134, 11)
+        self.start_address = self.read_short(0x102)
+        self.game_code = self.read_string(0x13f, 4)
+        self.gbc_compatible = self.read_byte(0x143)
+        self.maker_code = self.read_string(0x144, 2)
+        self.super_gameboy = bool(self.read_byte(0x146))
+        self.rom_size = self.ROM_SIZES[self.read_byte(0x148)]
+        self.destination = self.read_byte(0x14a)
+        self.mask_rom_version = self.read_byte(0x14c)
+        self.checksum = self.read_short(0x14e)
 
         # Run complement check on header data.
-        complement_check_sum = sum(self.ubytes(0x134, 0x14d)) + 0x19
-        self.passed_complement_check = (complement_check_sum + self.ubyte(0x14d)) & 0xFF == 0
+        complement_check_sum = sum(self.read_bytes(0x134, 0x14d)) + 0x19
+        self.passed_complement_check = (complement_check_sum + self.read_byte(0x14d)) & 0xFF == 0
 
     @property
     def raw_data(self):
         return self.rom_data
 
 
-class Ram(ReadableMemory):
+class Ram(ReadableMemory, WriteableMemory):
     def __init__(self, size):
         self.raw_data = bytearray(size)
 
 
 class Memory(object):
-    def __init__(self, rom):
+    def __init__(self, rom, bios):
         self.rom = rom
+        self.bios = bios
+        self.bios_enabled = True
 
-        self.working_ram = Ram(8 * 1024)
+        self.wram = Ram(8 * 1024)
         self.stack = Ram(127)
 
-    def string(self, address, length):
+    def read_string(self, address, length):
         memory, offset = self._get_memory(address, address + length)
-        memory.string(address - offset, length)
+        return memory.read_string(address - offset, length)
 
-    def short(self, address):
+    def read_short(self, address):
         memory, offset = self._get_memory(address, address + 2)
-        return memory.short(address - offset)
+        return memory.read_short(address - offset)
 
-    def ubyte(self, address):
+    def write_short(self, address, value):
+        memory, offset = self._get_memory(address, address + 2)
+        memory.write_short(address - offset, value)
+
+    def read_byte(self, address):
         memory, offset = self._get_memory(address, address + 1)
-        return memory.ubyte(address - offset)
+        return memory.read_byte(address - offset)
 
-    def ubytes(self, start_address, end_address):
+    def write_byte(self, address, value):
+        memory, offset = self._get_memory(address, address + 1)
+        return memory.write_byte(address - offset, value)
+
+    def read_bytes(self, start_address, end_address):
         memory, offset = self._get_memory(start_address, end_address)
-        return memory.ubytes(start_address - offset, end_address - offset)
+        return memory.read_bytes(start_address - offset, end_address - offset)
 
     def _get_memory(self, start_address, end_address):
+        # Special case: While the bios is enabled, it replaces the first
+        # 256 bytes of memory.
+        if start_address < end_address <= 0xFF and self.bios_enabled:
+            return self.bios, 0
+
+        # Game cart ROM
         if start_address < end_address <= 0x8000:
             return self.rom, 0
-        elif 0xc000 <= start_address < end_address < 0xe000:
-            return self.working_ram, 0xc000
-        elif 0xe000 <= start_address < end_address < 0xfe00:  # Mirror
-            return self.working_ram, 0xe000
-        elif 0xff80 <= start_address < end_address < 0xfffe:
+
+        # Working RAM
+        if 0xc000 <= start_address < end_address < 0xe000:
+            return self.wram, 0xc000
+
+        # Mirror of Working RAM
+        if 0xe000 <= start_address < end_address < 0xfe00:
+            return self.wram, 0xe000
+
+        # Stack RAM
+        if 0xff80 <= start_address < end_address < 0xfffe:
             return self.stack, 0xff80
-        else:
-            raise ValueError('Invalid memory range: {0:04x} - {1:04x}'
-                             .format(start_address, end_address))
+
+        raise ValueError('Invalid memory range: {0:04x} - {1:04x}'
+                         .format(start_address, end_address))
+
+
+def register_pair(hi, lo):
+    def getter(self):
+        return (getattr(self, hi) << 8) | getattr(self, lo)
+
+    def setter(self, value):
+        setattr(self, hi, (value >> 8) & 0xff)
+        setattr(self, lo, value & 0xff)
+
+    return property(getter, setter)
+
+
+def flag(bit):
+    def getter(self):
+        return (self.F >> bit) & 0x1
+
+    def setter(self, value):
+        self.F = self.F | (value << bit)
+
+    return property(getter, setter)
 
 
 class CPU(object):
     BYTE_REGISTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'H', 'L']
     SHORT_REGISTERS = ['PC', 'SP']
 
-    def __init__(self, memory):
+    AF = register_pair('A', 'F')
+    BC = register_pair('B', 'C')
+    DE = register_pair('D', 'E')
+    HL = register_pair('H', 'L')
+
+    Z = flag(7)
+    N = flag(6)
+    H = flag(5)
+    CY = flag(4)
+
+    def __init__(self, memory, debug=False):
+        self.debug = debug
+
         self.memory = memory
         self.cycles = 0
 
@@ -149,12 +216,17 @@ class CPU(object):
         return super(CPU, self).__setattr__(name, value)
 
     def read_and_execute(self):
-        opcode = self.next_ubyte()
+        opcode = self.read_next_byte()
         self.execute(opcode)
 
-    def next_ubyte(self):
-        value = self.memory.ubyte(self.PC)
+    def read_next_byte(self):
+        value = self.memory.read_byte(self.PC)
         self.PC += 1
+        return value
+
+    def read_next_short(self):
+        value = self.memory.read_short(self.PC)
+        self.PC += 2
         return value
 
     def execute(self, opcode):
@@ -172,6 +244,9 @@ def main():
     args = docopt(__doc__, version=gamegirl.__version__)
     with open(args['FILENAME'], 'rb') as f:
         rom = Rom(f.read())
+
+    with open(args['--bios'], 'rb') as f:
+        bios = Ram(f.read())
 
     # Print some info about the game we're running.
     print 'Game: ' + rom.title
@@ -194,10 +269,11 @@ def main():
     print 'Mask ROM Version: {0}'.format(rom.mask_rom_version)
     print 'Complement check: ' + ('Passed' if rom.passed_complement_check else 'Failed')
     print 'Checksum: 0x{0:04x}'.format(rom.checksum)
+    print '-------------------'
 
-    memory = Memory(rom=rom)
-    cpu = CPU(memory=memory)
-    cpu.PC = rom.start_address
+    memory = Memory(rom=rom, bios=bios)
+    cpu = CPU(memory=memory, debug=args['--debug'])
+    cpu.PC = 0
 
     while True:
         cpu.read_and_execute()

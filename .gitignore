@@ -11,3 +11,4 @@ virtualenv/
 tmp
 node_modules
 tags
+bios.gb
