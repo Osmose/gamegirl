@@ -139,15 +139,15 @@ class Memory(object):
             return self.rom, 0
 
         # Working RAM
-        if 0xc000 <= start_address < end_address < 0xe000:
+        if 0xc000 <= start_address < end_address <= 0xe000:
             return self.wram, 0xc000
 
         # Mirror of Working RAM
-        if 0xe000 <= start_address < end_address < 0xfe00:
+        if 0xe000 <= start_address < end_address <= 0xfe00:
             return self.wram, 0xe000
 
         # Stack RAM
-        if 0xff80 <= start_address < end_address < 0xfffe:
+        if 0xff80 <= start_address < end_address <= 0xfffe:
             return self.stack, 0xff80
 
         raise ValueError('Invalid memory range: {0:04x} - {1:04x}'
@@ -184,10 +184,10 @@ class CPU(object):
     DE = register_pair('D', 'E')
     HL = register_pair('H', 'L')
 
-    Z = flag(7)
-    N = flag(6)
-    H = flag(5)
-    CY = flag(4)
+    flag_Z = flag(7)
+    flag_N = flag(6)
+    flag_H = flag(5)
+    flag_CY = flag(4)
 
     def __init__(self, memory, debug=False):
         self.debug = debug
@@ -234,7 +234,9 @@ class CPU(object):
         if not instruction:
             raise Exception('Unknown opcode: 0x{0:02x}'.format(opcode))
 
-        instruction(self)
+        log = instruction(self)
+        if self.debug:
+            print log
 
     def cycle(self, cycles):
         self.cycles += cycles

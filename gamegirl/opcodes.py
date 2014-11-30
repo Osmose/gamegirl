@@ -47,8 +47,7 @@ def load_register(cycles, register, get_value, cpu):
     setattr(cpu, register, value)
     cpu.cycle(cycles)
 
-    if cpu.debug:
-        print 'LD {0},{1}'.format(register, debug_value)
+    return 'LD {0},{1}'.format(register, debug_value)
 
 
 def load_indirect(cycles, register, get_value, cpu):
@@ -57,8 +56,18 @@ def load_indirect(cycles, register, get_value, cpu):
     cpu.memory.write_byte(address, value)
     cpu.cycle(cycles)
 
-    if cpu.debug:
-        print 'LD ({0}),{1}'.format(register, debug_value)
+    return 'LD ({0}),{1}'.format(register, debug_value)
+
+
+def load_indirect_decrement(cycles, register, get_value, cpu):
+    log = load_indirect(cycles, register, get_value, cpu)
+
+    # Decrement register
+    value = getattr(cpu, register)
+    setattr(cpu, register, value - 2)
+
+    log[0:2] = 'LDD'
+    return log
 
 
 def push_short(cycles, register, cpu):
@@ -66,21 +75,19 @@ def push_short(cycles, register, cpu):
     cpu.SP -= 2
     cpu.cycle(cycles)
 
-    if cpu.debug:
-        print 'PUSH ' + register
+    return 'PUSH ' + register
 
 
 def xor(cycles, get_value, cpu):
     value, debug_value = get_value(cpu)
     cpu.A = cpu.A ^ value
-    cpu.Z = cpu.A == 0
-    cpu.N = 0
-    cpu.H = 0
-    cpu.CY = 0
+    cpu.flag_Z = cpu.A == 0
+    cpu.flag_N = 0
+    cpu.flag_H = 0
+    cpu.flag_CY = 0
     cpu.cycle(cycles)
 
-    if cpu.debug:
-        print 'XOR {0}'.format(debug_value)
+    return 'XOR {0}'.format(debug_value)
 
 
 OPCODES = {
@@ -175,4 +182,6 @@ OPCODES = {
     0x74: partial(load_indirect, 8, 'HL', get_register_H),
     0x75: partial(load_indirect, 8, 'HL', get_register_L),
     0x36: partial(load_indirect, 12, 'HL', get_immediate_byte),
+
+    0x32: partial(load_indirect_decrement, 8, 'HL', get_register_A),
 }
