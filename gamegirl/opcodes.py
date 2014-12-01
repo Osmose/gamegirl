@@ -126,6 +126,25 @@ def cb_dispatch(cpu):
         raise ValueError('Invalid CB opcode: 0x{0:02x}'.format(opcode))
 
 
+def bit_value(cycles, value, bit, cpu):
+    result = (value >> bit) & 0x1
+    cpu.flag_Z = result == 0
+    cpu.flag_N = 0
+    cpu.flag_H = 1
+    cpu.cycle(cycles)
+
+
+def bit_register(cycles, register, bit, cpu):
+    bit_value(cycles, getattr(cpu, register), bit, cpu)
+    return 'BIT {0},{1}'.format(bit, register)
+
+
+def bit_indirect(cycles, register, bit, cpu):
+    address = getattr(cpu, register)
+    bit_value(cycles, cpu.memory.read_byte(address), bit, cpu)
+    return 'BIT {0},({1})'.format(bit, register)
+
+
 OPCODES = {
     0x06: partial(load_register, 8, 'B', get_immediate_byte),
     0x0e: partial(load_register, 8, 'C', get_immediate_byte),
@@ -234,4 +253,76 @@ CB_OPCODES = {
     0x34: partial(swap_register, 8, 'H'),
     0x35: partial(swap_register, 8, 'L'),
     0x36: partial(swap_indirect, 16, 'HL'),
+
+    0x40: partial(bit_register, 8, 'B', 0),
+    0x41: partial(bit_register, 8, 'C', 0),
+    0x42: partial(bit_register, 8, 'D', 0),
+    0x43: partial(bit_register, 8, 'E', 0),
+    0x44: partial(bit_register, 8, 'H', 0),
+    0x45: partial(bit_register, 8, 'L', 0),
+    0x46: partial(bit_indirect, 16, 'HL', 0),
+    0x47: partial(bit_register, 8, 'A', 0),
+
+    0x48: partial(bit_register, 8, 'B', 1),
+    0x49: partial(bit_register, 8, 'C', 1),
+    0x4a: partial(bit_register, 8, 'D', 1),
+    0x4b: partial(bit_register, 8, 'E', 1),
+    0x4c: partial(bit_register, 8, 'H', 1),
+    0x4d: partial(bit_register, 8, 'L', 1),
+    0x4e: partial(bit_indirect, 16, 'HL', 1),
+    0x4f: partial(bit_register, 8, 'A', 1),
+
+    0x50: partial(bit_register, 8, 'B', 2),
+    0x51: partial(bit_register, 8, 'C', 2),
+    0x52: partial(bit_register, 8, 'D', 2),
+    0x53: partial(bit_register, 8, 'E', 2),
+    0x54: partial(bit_register, 8, 'H', 2),
+    0x55: partial(bit_register, 8, 'L', 2),
+    0x56: partial(bit_indirect, 16, 'HL', 2),
+    0x57: partial(bit_register, 8, 'A', 2),
+
+    0x58: partial(bit_register, 8, 'B', 3),
+    0x59: partial(bit_register, 8, 'C', 3),
+    0x5a: partial(bit_register, 8, 'D', 3),
+    0x5b: partial(bit_register, 8, 'E', 3),
+    0x5c: partial(bit_register, 8, 'H', 3),
+    0x5d: partial(bit_register, 8, 'L', 3),
+    0x5e: partial(bit_indirect, 16, 'HL', 3),
+    0x5f: partial(bit_register, 8, 'A', 3),
+
+    0x60: partial(bit_register, 8, 'B', 4),
+    0x61: partial(bit_register, 8, 'C', 4),
+    0x62: partial(bit_register, 8, 'D', 4),
+    0x63: partial(bit_register, 8, 'E', 4),
+    0x64: partial(bit_register, 8, 'H', 4),
+    0x65: partial(bit_register, 8, 'L', 4),
+    0x66: partial(bit_indirect, 16, 'HL', 4),
+    0x67: partial(bit_register, 8, 'A', 4),
+
+    0x68: partial(bit_register, 8, 'B', 5),
+    0x69: partial(bit_register, 8, 'C', 5),
+    0x6a: partial(bit_register, 8, 'D', 5),
+    0x6b: partial(bit_register, 8, 'E', 5),
+    0x6c: partial(bit_register, 8, 'H', 5),
+    0x6d: partial(bit_register, 8, 'L', 5),
+    0x6e: partial(bit_indirect, 16, 'HL', 5),
+    0x6f: partial(bit_register, 8, 'A', 5),
+
+    0x70: partial(bit_register, 8, 'B', 6),
+    0x71: partial(bit_register, 8, 'C', 6),
+    0x72: partial(bit_register, 8, 'D', 6),
+    0x73: partial(bit_register, 8, 'E', 6),
+    0x74: partial(bit_register, 8, 'H', 6),
+    0x75: partial(bit_register, 8, 'L', 6),
+    0x76: partial(bit_indirect, 16, 'HL', 6),
+    0x77: partial(bit_register, 8, 'A', 6),
+
+    0x78: partial(bit_register, 8, 'B', 7),
+    0x79: partial(bit_register, 8, 'C', 7),
+    0x7a: partial(bit_register, 8, 'D', 7),
+    0x7b: partial(bit_register, 8, 'E', 7),
+    0x7c: partial(bit_register, 8, 'H', 7),
+    0x7d: partial(bit_register, 8, 'L', 7),
+    0x7e: partial(bit_indirect, 16, 'HL', 7),
+    0x7f: partial(bit_register, 8, 'A', 7),
 }
