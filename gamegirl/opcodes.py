@@ -38,6 +38,13 @@ def get_indirect_byte(register, cpu):
 
 
 get_indirect_byte_HL = partial(get_indirect_byte, 'HL')
+get_indirect_byte_BC = partial(get_indirect_byte, 'BC')
+get_indirect_byte_DE = partial(get_indirect_byte, 'DE')
+
+
+def get_indirect_byte_immediate(cpu):
+    address = cpu.read_next_short()
+    return cpu.memory.read_byte(address), '(0x{0:04x})'.format(address)
 
 
 def is_flag_set(flag, cpu):
@@ -212,6 +219,12 @@ OPCODES = {
     0x7c: partial(load_register, 4, 'A', get_register_H),
     0x7d: partial(load_register, 4, 'A', get_register_L),
     0x7e: partial(load_register, 8, 'A', get_indirect_byte_HL),
+
+    0x0a: partial(load_register, 8, 'A', get_indirect_byte_BC),
+    0x1a: partial(load_register, 8, 'A', get_indirect_byte_DE),
+    0x7e: partial(load_register, 8, 'A', get_indirect_byte_HL),
+    0xfa: partial(load_register, 16, 'A', get_indirect_byte_immediate),
+    0x3e: partial(load_register, 8, 'A', get_immediate_byte),
 
     0x40: partial(load_register, 4, 'B', get_register_B),
     0x41: partial(load_register, 4, 'B', get_register_C),
