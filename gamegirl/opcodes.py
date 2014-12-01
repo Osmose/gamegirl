@@ -40,6 +40,27 @@ def get_indirect_byte(register, cpu):
 get_indirect_byte_HL = partial(get_indirect_byte, 'HL')
 
 
+def is_flag_set(flag, cpu):
+    return bool(getattr(cpu, 'flag_' + flag)), flag
+
+
+is_flag_Z_set = partial(is_flag_set, 'Z')
+is_flag_N_set = partial(is_flag_set, 'N')
+is_flag_H_set = partial(is_flag_set, 'H')
+is_flag_C_set = partial(is_flag_set, 'C')
+
+
+def is_flag_reset(flag, cpu):
+    is_set, log_operand = is_flag_set(flag, cpu)
+    return not is_set, 'N' + log_operand
+
+
+is_flag_Z_reset = partial(is_flag_reset, 'Z')
+is_flag_N_reset = partial(is_flag_reset, 'N')
+is_flag_H_reset = partial(is_flag_reset, 'H')
+is_flag_C_reset = partial(is_flag_reset, 'C')
+
+
 # Instruction functions actually do the work of an instruction as well
 # as printing debug info if necessary.
 def load_register(cycles, register, get_value, cpu):
@@ -85,7 +106,7 @@ def xor(cycles, get_value, cpu):
     cpu.flag_Z = cpu.A == 0
     cpu.flag_N = 0
     cpu.flag_H = 0
-    cpu.flag_CY = 0
+    cpu.flag_C = 0
 
     return 'XOR {0}'.format(debug_value)
 
@@ -95,7 +116,7 @@ def swap(value, cpu):
     cpu.flag_Z = result == 0
     cpu.flag_N = 0
     cpu.flag_H = 0
-    cpu.flag_CY = 0
+    cpu.flag_C = 0
     return result
 
 
@@ -116,6 +137,16 @@ def swap_indirect(cycles, register, cpu):
     cpu.cycle(cycles)
 
     return 'SWAP ({0})'.format(register)
+
+
+def jump_condition(cycles, condition, cpu):
+    value = cpu.read_next_byte()
+    result, log_operand = condition(cpu)
+    if result:
+        cpu.PC += value
+    cpu.cycle(cycles)
+
+    return 'JR {0},0x{1:02x}'.format(log_operand, value)
 
 
 def cb_dispatch(cpu):
@@ -241,6 +272,11 @@ OPCODES = {
     0x32: partial(load_indirect_decrement, 8, 'HL', get_register_A),
 
     0xcb: cb_dispatch,
+
+    0x20: partial(jump_condition, 8, is_flag_Z_reset),
+    0x28: partial(jump_condition, 8, is_flag_Z_set),
+    0x30: partial(jump_condition, 8, is_flag_C_reset),
+    0x38: partial(jump_condition, 8, is_flag_C_set),
 }
 
 

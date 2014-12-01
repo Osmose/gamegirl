@@ -192,7 +192,7 @@ class CPU(object):
     flag_Z = flag(7)
     flag_N = flag(6)
     flag_H = flag(5)
-    flag_CY = flag(4)
+    flag_C = flag(4)
 
     def __init__(self, memory, debug=False):
         self.debug = debug
