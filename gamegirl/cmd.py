@@ -98,7 +98,7 @@ class CPU(object):
             raise Exception('Unknown opcode: 0x{0:02x}'.format(opcode))
 
         try:
-            log = instruction(self)
+            log = instruction(cpu=self)
         except ValueError:
             # Log the opcode for debugging purposes.
             print 'Opcode: 0x{0:02x}'.format(opcode)

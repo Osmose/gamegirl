@@ -1,10 +1,8 @@
 from functools import partial
 
 
-# get_ functions are passed into instruction functions to customize how
-# they load a value that they're operating on. They return the value
-# they've fetched and a debug string for when debugging output is
-# enabled.
+## Reading Values ######################################################
+
 def get_immediate_byte(cpu):
     value = cpu.read_next_byte()
     return value, '0x{0:04x}'.format(value)
@@ -15,24 +13,31 @@ def get_immediate_short(cpu):
     return value, '0x{0:04x}'.format(value)
 
 
-def get_register(register, cpu):
+def get_register(cpu, register):
     return getattr(cpu, register), register
 
 
-get_register_A = partial(get_register, 'A')
-get_register_B = partial(get_register, 'B')
-get_register_C = partial(get_register, 'C')
-get_register_D = partial(get_register, 'D')
-get_register_E = partial(get_register, 'E')
-get_register_H = partial(get_register, 'H')
-get_register_L = partial(get_register, 'L')
-get_register_BC = partial(get_register, 'BC')
-get_register_DE = partial(get_register, 'DE')
-get_register_HL = partial(get_register, 'HL')
-get_register_SP = partial(get_register, 'SP')
+get_register_A = partial(get_register, register='A')
+get_register_B = partial(get_register, register='B')
+get_register_C = partial(get_register, register='C')
+get_register_D = partial(get_register, register='D')
+get_register_E = partial(get_register, register='E')
+get_register_H = partial(get_register, register='H')
+get_register_L = partial(get_register, register='L')
+get_register_AF = partial(get_register, register='AF')
+get_register_BC = partial(get_register, register='BC')
+get_register_DE = partial(get_register, register='DE')
+get_register_HL = partial(get_register, register='HL')
+get_register_SP = partial(get_register, register='SP')
 
 
-def get_indirect_byte(register, cpu):
+def get_indirect_register(cpu, register):
+    address = getattr(cpu, register)
+    value = cpu.memory.read_byte(address)
+    return value, '({0})'.format(register)
+
+
+def get_indirect_byte(cpu, register):
     address = getattr(cpu, register)
     return cpu.memory.read_byte(address), '({0})'.format(register)
 
@@ -46,6 +51,47 @@ def get_indirect_byte_immediate(cpu):
     address = cpu.read_next_short()
     return cpu.memory.read_byte(address), '(0x{0:04x})'.format(address)
 
+
+## Writing Values ######################################################
+
+def write_register(cpu, register, value):
+    setattr(cpu, register, value)
+    return register
+
+
+write_register_A = partial(write_register, register='A')
+write_register_B = partial(write_register, register='B')
+write_register_C = partial(write_register, register='C')
+write_register_D = partial(write_register, register='D')
+write_register_E = partial(write_register, register='E')
+write_register_H = partial(write_register, register='H')
+write_register_L = partial(write_register, register='L')
+write_register_BC = partial(write_register, register='BC')
+write_register_DE = partial(write_register, register='DE')
+write_register_HL = partial(write_register, register='HL')
+write_register_SP = partial(write_register, register='SP')
+
+
+def write_indirect_byte(cpu, register, value):
+    address = getattr(cpu, register)
+    cpu.memory.write_byte(address, value)
+    return '({0})'.format(register)
+
+
+write_indirect_byte_HL = partial(write_indirect_byte, register='HL')
+
+
+def write_indirect_decrement(cpu, register, value):
+    address = getattr(cpu, register)
+    cpu.memory.write_byte(address, value)
+    setattr(cpu, register, address - 1)
+    return '({0}-)'.format(register)
+
+
+write_indirect_decrement_HL = partial(write_indirect_decrement, register='HL')
+
+
+## Checking Flags ######################################################
 
 def is_flag_set(flag, cpu):
     return bool(getattr(cpu, 'flag_' + flag)), flag
@@ -68,310 +114,272 @@ is_flag_H_reset = partial(is_flag_reset, 'H')
 is_flag_C_reset = partial(is_flag_reset, 'C')
 
 
-# Instruction functions actually do the work of an instruction as well
-# as printing debug info if necessary.
-def load_register(cycles, register, get_value, cpu):
-    value, debug_value = get_value(cpu)
-    setattr(cpu, register, value)
+## Instructions ########################################################
+
+def load(cpu, get, write, cycles):
+    value, debug_value = get(cpu=cpu)
+    debug_destination = write(cpu=cpu, value=value)
+
     cpu.cycle(cycles)
-
-    return 'LD {0},{1}'.format(register, debug_value)
-
-
-def load_indirect(cycles, register, get_value, cpu):
-    address = getattr(cpu, register)
-    value, debug_value = get_value(cpu)
-    cpu.memory.write_byte(address, value)
-    cpu.cycle(cycles)
-
-    return 'LD ({0}),{1}'.format(register, debug_value)
+    return 'LD {0},{1}'.format(debug_destination, debug_value)
 
 
-def load_indirect_decrement(cycles, register, get_value, cpu):
-    log = load_indirect(cycles, register, get_value, cpu)
-
-    # Decrement register
-    value = getattr(cpu, register)
-    setattr(cpu, register, value - 2)
-
-    return log.replace('LD', 'LDD')
-
-
-def push_short(cycles, register, cpu):
-    cpu.memory.write_short(cpu.SP, getattr(cpu, register))
+def push_short(cpu, get, cycles):
+    value, debug_value = get(cpu=cpu)
+    cpu.memory.write_short(cpu.SP, value)
     cpu.SP -= 2
+
     cpu.cycle(cycles)
+    return 'PUSH ' + debug_value
 
-    return 'PUSH ' + register
 
-
-def xor(cycles, get_value, cpu):
-    value, debug_value = get_value(cpu)
+def xor(cpu, get, cycles):
+    value, debug_value = get(cpu=cpu)
     cpu.A = cpu.A ^ value
-    cpu.cycle(cycles)
 
     cpu.flag_Z = cpu.A == 0
     cpu.flag_N = 0
     cpu.flag_H = 0
     cpu.flag_C = 0
 
-    return 'XOR {0}'.format(debug_value)
+    cpu.cycle(cycles)
+    return 'XOR ' + debug_value
 
 
-def swap(value, cpu):
+def swap(cpu, get, write, cycles):
+    value, debug_value = get(cpu=cpu)
     result = (value >> 4) & (value << 4)
+    write(cpu=cpu, value=result)
+
     cpu.flag_Z = result == 0
     cpu.flag_N = 0
     cpu.flag_H = 0
     cpu.flag_C = 0
-    return result
 
-
-def swap_register(cycles, register, cpu):
-    value = getattr(cpu, register)
-    result = swap(value, cpu)
-    setattr(cpu, register, result)
     cpu.cycle(cycles)
-
-    return 'SWAP {0}'.format(register)
-
-
-def swap_indirect(cycles, register, cpu):
-    address = getattr(cpu, register)
-    value = cpu.memory.read_byte(address)
-    result = swap(value, cpu)
-    cpu.memory.write_byte(address, result)
-    cpu.cycle(cycles)
-
-    return 'SWAP ({0})'.format(register)
+    return 'SWAP ' + debug_value
 
 
-def jump_condition(cycles, condition, cpu):
-    value = cpu.read_next_byte()
-    result, log_operand = condition(cpu)
+def jump_condition(cpu, get, condition, cycles):
+    value, _ = get(cpu=cpu)
+    result, log_operand = condition(cpu=cpu)
     if result:
         cpu.PC += value
-    cpu.cycle(cycles)
 
+    cpu.cycle(cycles)
     return 'JR {0},0x{1:02x}'.format(log_operand, value)
 
 
 def cb_dispatch(cpu):
     opcode = cpu.read_next_byte()
     try:
-        return CB_OPCODES[opcode](cpu)
+        return CB_OPCODES[opcode](cpu=cpu)
     except KeyError:
         raise ValueError('Invalid CB opcode: 0x{0:02x}'.format(opcode))
 
 
-def bit_value(cycles, value, bit, cpu):
+def bit(cpu, get, bit, cycles):
+    value, debug_value = get(cpu=cpu)
     result = (value >> bit) & 0x1
     cpu.flag_Z = result == 0
     cpu.flag_N = 0
     cpu.flag_H = 1
+
     cpu.cycle(cycles)
+    return 'BIT {0},{1}'.format(bit, debug_value)
 
 
-def bit_register(cycles, register, bit, cpu):
-    bit_value(cycles, getattr(cpu, register), bit, cpu)
-    return 'BIT {0},{1}'.format(bit, register)
-
-
-def bit_indirect(cycles, register, bit, cpu):
-    address = getattr(cpu, register)
-    bit_value(cycles, cpu.memory.read_byte(address), bit, cpu)
-    return 'BIT {0},({1})'.format(bit, register)
-
+## Jump Tables #########################################################
 
 OPCODES = {
-    0x06: partial(load_register, 8, 'B', get_immediate_byte),
-    0x0e: partial(load_register, 8, 'C', get_immediate_byte),
-    0x16: partial(load_register, 8, 'D', get_immediate_byte),
-    0x1e: partial(load_register, 8, 'E', get_immediate_byte),
-    0x26: partial(load_register, 8, 'H', get_immediate_byte),
-    0x2e: partial(load_register, 8, 'L', get_immediate_byte),
+    0x06: partial(load, cycles=8, get=get_immediate_byte, write=write_register_B),
+    0x0e: partial(load, cycles=8, get=get_immediate_byte, write=write_register_C),
+    0x16: partial(load, cycles=8, get=get_immediate_byte, write=write_register_D),
+    0x1e: partial(load, cycles=8, get=get_immediate_byte, write=write_register_E),
+    0x26: partial(load, cycles=8, get=get_immediate_byte, write=write_register_H),
+    0x2e: partial(load, cycles=8, get=get_immediate_byte, write=write_register_L),
 
-    0x01: partial(load_register, 12, 'BC', get_immediate_short),
-    0x11: partial(load_register, 12, 'DE', get_immediate_short),
-    0x21: partial(load_register, 12, 'HL', get_immediate_short),
-    0x31: partial(load_register, 12, 'SP', get_immediate_short),
+    0x01: partial(load, cycles=12, get=get_immediate_short, write=write_register_BC),
+    0x11: partial(load, cycles=12, get=get_immediate_short, write=write_register_DE),
+    0x21: partial(load, cycles=12, get=get_immediate_short, write=write_register_HL),
+    0x31: partial(load, cycles=12, get=get_immediate_short, write=write_register_SP),
 
-    0xf5: partial(push_short, 16, 'AF'),
-    0xc5: partial(push_short, 16, 'BC'),
-    0xd5: partial(push_short, 16, 'DE'),
-    0xe5: partial(push_short, 16, 'HL'),
+    0xf5: partial(push_short, cycles=16, get=get_register_AF),
+    0xc5: partial(push_short, cycles=16, get=get_register_BC),
+    0xd5: partial(push_short, cycles=16, get=get_register_DE),
+    0xe5: partial(push_short, cycles=16, get=get_register_HL),
 
-    0xaf: partial(xor, 4, get_register_A),
-    0xa8: partial(xor, 4, get_register_B),
-    0xa9: partial(xor, 4, get_register_C),
-    0xaa: partial(xor, 4, get_register_D),
-    0xab: partial(xor, 4, get_register_E),
-    0xac: partial(xor, 4, get_register_H),
-    0xad: partial(xor, 4, get_register_L),
-    0xae: partial(xor, 8, get_indirect_byte_HL),
-    0xee: partial(xor, 8, get_immediate_byte),
+    0xaf: partial(xor, cycles=4, get=get_register_A),
+    0xa8: partial(xor, cycles=4, get=get_register_B),
+    0xa9: partial(xor, cycles=4, get=get_register_C),
+    0xaa: partial(xor, cycles=4, get=get_register_D),
+    0xab: partial(xor, cycles=4, get=get_register_E),
+    0xac: partial(xor, cycles=4, get=get_register_H),
+    0xad: partial(xor, cycles=4, get=get_register_L),
+    0xae: partial(xor, cycles=8, get=get_indirect_byte_HL),
+    0xee: partial(xor, cycles=8, get=get_immediate_byte),
 
-    0x7f: partial(load_register, 4, 'A', get_register_A),
-    0x78: partial(load_register, 4, 'A', get_register_B),
-    0x79: partial(load_register, 4, 'A', get_register_C),
-    0x7a: partial(load_register, 4, 'A', get_register_D),
-    0x7b: partial(load_register, 4, 'A', get_register_E),
-    0x7c: partial(load_register, 4, 'A', get_register_H),
-    0x7d: partial(load_register, 4, 'A', get_register_L),
-    0x7e: partial(load_register, 8, 'A', get_indirect_byte_HL),
+    0x7f: partial(load, cycles=4, get=get_register_A, write=write_register_A),
+    0x78: partial(load, cycles=4, get=get_register_B, write=write_register_A),
+    0x79: partial(load, cycles=4, get=get_register_C, write=write_register_A),
+    0x7a: partial(load, cycles=4, get=get_register_D, write=write_register_A),
+    0x7b: partial(load, cycles=4, get=get_register_E, write=write_register_A),
+    0x7c: partial(load, cycles=4, get=get_register_H, write=write_register_A),
+    0x7d: partial(load, cycles=4, get=get_register_L, write=write_register_A),
+    0x7e: partial(load, cycles=8, get=get_indirect_byte_HL, write=write_register_A),
 
-    0x0a: partial(load_register, 8, 'A', get_indirect_byte_BC),
-    0x1a: partial(load_register, 8, 'A', get_indirect_byte_DE),
-    0x7e: partial(load_register, 8, 'A', get_indirect_byte_HL),
-    0xfa: partial(load_register, 16, 'A', get_indirect_byte_immediate),
-    0x3e: partial(load_register, 8, 'A', get_immediate_byte),
+    0x0a: partial(load, cycles=8, get=get_indirect_byte_BC, write=write_register_A),
+    0x1a: partial(load, cycles=8, get=get_indirect_byte_DE, write=write_register_A),
+    0x7e: partial(load, cycles=8, get=get_indirect_byte_HL, write=write_register_A),
+    0xfa: partial(load, cycles=16, get=get_indirect_byte_immediate, write=write_register_A),
+    0x3e: partial(load, cycles=8, get=get_immediate_byte, write=write_register_A),
 
-    0x40: partial(load_register, 4, 'B', get_register_B),
-    0x41: partial(load_register, 4, 'B', get_register_C),
-    0x42: partial(load_register, 4, 'B', get_register_D),
-    0x43: partial(load_register, 4, 'B', get_register_E),
-    0x44: partial(load_register, 4, 'B', get_register_H),
-    0x45: partial(load_register, 4, 'B', get_register_L),
-    0x46: partial(load_register, 8, 'B', get_indirect_byte_HL),
+    0x40: partial(load, cycles=4, get=get_register_B, write=write_register_B),
+    0x41: partial(load, cycles=4, get=get_register_C, write=write_register_B),
+    0x42: partial(load, cycles=4, get=get_register_D, write=write_register_B),
+    0x43: partial(load, cycles=4, get=get_register_E, write=write_register_B),
+    0x44: partial(load, cycles=4, get=get_register_H, write=write_register_B),
+    0x45: partial(load, cycles=4, get=get_register_L, write=write_register_B),
+    0x46: partial(load, cycles=8, get=get_indirect_byte_HL, write=write_register_B),
 
-    0x48: partial(load_register, 4, 'C', get_register_B),
-    0x49: partial(load_register, 4, 'C', get_register_C),
-    0x4a: partial(load_register, 4, 'C', get_register_D),
-    0x4b: partial(load_register, 4, 'C', get_register_E),
-    0x4c: partial(load_register, 4, 'C', get_register_H),
-    0x4d: partial(load_register, 4, 'C', get_register_L),
-    0x4e: partial(load_register, 8, 'C', get_indirect_byte_HL),
+    0x48: partial(load, cycles=4, get=get_register_B, write=write_register_C),
+    0x49: partial(load, cycles=4, get=get_register_C, write=write_register_C),
+    0x4a: partial(load, cycles=4, get=get_register_D, write=write_register_C),
+    0x4b: partial(load, cycles=4, get=get_register_E, write=write_register_C),
+    0x4c: partial(load, cycles=4, get=get_register_H, write=write_register_C),
+    0x4d: partial(load, cycles=4, get=get_register_L, write=write_register_C),
+    0x4e: partial(load, cycles=8, get=get_indirect_byte_HL, write=write_register_C),
 
-    0x50: partial(load_register, 4, 'D', get_register_B),
-    0x51: partial(load_register, 4, 'D', get_register_C),
-    0x52: partial(load_register, 4, 'D', get_register_D),
-    0x53: partial(load_register, 4, 'D', get_register_E),
-    0x54: partial(load_register, 4, 'D', get_register_H),
-    0x55: partial(load_register, 4, 'D', get_register_L),
-    0x56: partial(load_register, 8, 'D', get_indirect_byte_HL),
+    0x50: partial(load, cycles=4, get=get_register_B, write=write_register_D),
+    0x51: partial(load, cycles=4, get=get_register_C, write=write_register_D),
+    0x52: partial(load, cycles=4, get=get_register_D, write=write_register_D),
+    0x53: partial(load, cycles=4, get=get_register_E, write=write_register_D),
+    0x54: partial(load, cycles=4, get=get_register_H, write=write_register_D),
+    0x55: partial(load, cycles=4, get=get_register_L, write=write_register_D),
+    0x56: partial(load, cycles=8, get=get_indirect_byte_HL, write=write_register_D),
 
-    0x58: partial(load_register, 4, 'E', get_register_B),
-    0x59: partial(load_register, 4, 'E', get_register_C),
-    0x5a: partial(load_register, 4, 'E', get_register_D),
-    0x5b: partial(load_register, 4, 'E', get_register_E),
-    0x5c: partial(load_register, 4, 'E', get_register_H),
-    0x5d: partial(load_register, 4, 'E', get_register_L),
-    0x5e: partial(load_register, 8, 'E', get_indirect_byte_HL),
+    0x58: partial(load, cycles=4, get=get_register_B, write=write_register_E),
+    0x59: partial(load, cycles=4, get=get_register_C, write=write_register_E),
+    0x5a: partial(load, cycles=4, get=get_register_D, write=write_register_E),
+    0x5b: partial(load, cycles=4, get=get_register_E, write=write_register_E),
+    0x5c: partial(load, cycles=4, get=get_register_H, write=write_register_E),
+    0x5d: partial(load, cycles=4, get=get_register_L, write=write_register_E),
+    0x5e: partial(load, cycles=8, get=get_indirect_byte_HL, write=write_register_E),
 
-    0x60: partial(load_register, 4, 'H', get_register_B),
-    0x61: partial(load_register, 4, 'H', get_register_C),
-    0x62: partial(load_register, 4, 'H', get_register_D),
-    0x63: partial(load_register, 4, 'H', get_register_E),
-    0x64: partial(load_register, 4, 'H', get_register_H),
-    0x65: partial(load_register, 4, 'H', get_register_L),
-    0x66: partial(load_register, 8, 'H', get_indirect_byte_HL),
+    0x60: partial(load, cycles=4, get=get_register_B, write=write_register_H),
+    0x61: partial(load, cycles=4, get=get_register_C, write=write_register_H),
+    0x62: partial(load, cycles=4, get=get_register_D, write=write_register_H),
+    0x63: partial(load, cycles=4, get=get_register_E, write=write_register_H),
+    0x64: partial(load, cycles=4, get=get_register_H, write=write_register_H),
+    0x65: partial(load, cycles=4, get=get_register_L, write=write_register_H),
+    0x66: partial(load, cycles=8, get=get_indirect_byte_HL, write=write_register_H),
 
-    0x68: partial(load_register, 4, 'L', get_register_B),
-    0x69: partial(load_register, 4, 'L', get_register_C),
-    0x6a: partial(load_register, 4, 'L', get_register_D),
-    0x6b: partial(load_register, 4, 'L', get_register_E),
-    0x6c: partial(load_register, 4, 'L', get_register_H),
-    0x6d: partial(load_register, 4, 'L', get_register_L),
-    0x6e: partial(load_register, 8, 'L', get_indirect_byte_HL),
+    0x68: partial(load, cycles=4, get=get_register_B, write=write_register_L),
+    0x69: partial(load, cycles=4, get=get_register_C, write=write_register_L),
+    0x6a: partial(load, cycles=4, get=get_register_D, write=write_register_L),
+    0x6b: partial(load, cycles=4, get=get_register_E, write=write_register_L),
+    0x6c: partial(load, cycles=4, get=get_register_H, write=write_register_L),
+    0x6d: partial(load, cycles=4, get=get_register_L, write=write_register_L),
+    0x6e: partial(load, cycles=8, get=get_indirect_byte_HL, write=write_register_L),
 
-    0x70: partial(load_indirect, 8, 'HL', get_register_B),
-    0x71: partial(load_indirect, 8, 'HL', get_register_C),
-    0x72: partial(load_indirect, 8, 'HL', get_register_D),
-    0x73: partial(load_indirect, 8, 'HL', get_register_E),
-    0x74: partial(load_indirect, 8, 'HL', get_register_H),
-    0x75: partial(load_indirect, 8, 'HL', get_register_L),
-    0x36: partial(load_indirect, 12, 'HL', get_immediate_byte),
+    0x70: partial(load, cycles=8, get=get_register_B, write=write_indirect_byte_HL),
+    0x71: partial(load, cycles=8, get=get_register_C, write=write_indirect_byte_HL),
+    0x72: partial(load, cycles=8, get=get_register_D, write=write_indirect_byte_HL),
+    0x73: partial(load, cycles=8, get=get_register_E, write=write_indirect_byte_HL),
+    0x74: partial(load, cycles=8, get=get_register_H, write=write_indirect_byte_HL),
+    0x75: partial(load, cycles=8, get=get_register_L, write=write_indirect_byte_HL),
+    0x36: partial(load, cycles=12, get=get_immediate_byte, write=write_indirect_byte_HL),
 
-    0x32: partial(load_indirect_decrement, 8, 'HL', get_register_A),
+    0x32: partial(load, cycles=8, get=get_register_A, write=write_indirect_decrement_HL),
 
     0xcb: cb_dispatch,
 
-    0x20: partial(jump_condition, 8, is_flag_Z_reset),
-    0x28: partial(jump_condition, 8, is_flag_Z_set),
-    0x30: partial(jump_condition, 8, is_flag_C_reset),
-    0x38: partial(jump_condition, 8, is_flag_C_set),
+    0x20: partial(jump_condition, cycles=8, get=get_immediate_byte, condition=is_flag_Z_reset),
+    0x28: partial(jump_condition, cycles=8, get=get_immediate_byte, condition=is_flag_Z_set),
+    0x30: partial(jump_condition, cycles=8, get=get_immediate_byte, condition=is_flag_C_reset),
+    0x38: partial(jump_condition, cycles=8, get=get_immediate_byte, condition=is_flag_C_set),
 }
 
 
 CB_OPCODES = {
-    0x37: partial(swap_register, 8, 'A'),
-    0x30: partial(swap_register, 8, 'B'),
-    0x31: partial(swap_register, 8, 'C'),
-    0x32: partial(swap_register, 8, 'D'),
-    0x33: partial(swap_register, 8, 'E'),
-    0x34: partial(swap_register, 8, 'H'),
-    0x35: partial(swap_register, 8, 'L'),
-    0x36: partial(swap_indirect, 16, 'HL'),
+    0x37: partial(swap, cycles=8, get=get_register_A, write=write_register_A),
+    0x30: partial(swap, cycles=8, get=get_register_B, write=write_register_B),
+    0x31: partial(swap, cycles=8, get=get_register_C, write=write_register_C),
+    0x32: partial(swap, cycles=8, get=get_register_D, write=write_register_D),
+    0x33: partial(swap, cycles=8, get=get_register_E, write=write_register_E),
+    0x34: partial(swap, cycles=8, get=get_register_H, write=write_register_H),
+    0x35: partial(swap, cycles=8, get=get_register_L, write=write_register_L),
+    0x36: partial(swap, cycles=16, get=get_indirect_byte_HL, write=write_indirect_byte_HL),
 
-    0x40: partial(bit_register, 8, 'B', 0),
-    0x41: partial(bit_register, 8, 'C', 0),
-    0x42: partial(bit_register, 8, 'D', 0),
-    0x43: partial(bit_register, 8, 'E', 0),
-    0x44: partial(bit_register, 8, 'H', 0),
-    0x45: partial(bit_register, 8, 'L', 0),
-    0x46: partial(bit_indirect, 16, 'HL', 0),
-    0x47: partial(bit_register, 8, 'A', 0),
+    0x40: partial(bit, cycles=8, get=get_register_B, bit=0),
+    0x41: partial(bit, cycles=8, get=get_register_C, bit=0),
+    0x42: partial(bit, cycles=8, get=get_register_D, bit=0),
+    0x43: partial(bit, cycles=8, get=get_register_E, bit=0),
+    0x44: partial(bit, cycles=8, get=get_register_H, bit=0),
+    0x45: partial(bit, cycles=8, get=get_register_L, bit=0),
+    0x46: partial(bit, cycles=16, get=get_indirect_byte_HL, bit=0),
+    0x47: partial(bit, cycles=8, get=get_register_A, bit=0),
 
-    0x48: partial(bit_register, 8, 'B', 1),
-    0x49: partial(bit_register, 8, 'C', 1),
-    0x4a: partial(bit_register, 8, 'D', 1),
-    0x4b: partial(bit_register, 8, 'E', 1),
-    0x4c: partial(bit_register, 8, 'H', 1),
-    0x4d: partial(bit_register, 8, 'L', 1),
-    0x4e: partial(bit_indirect, 16, 'HL', 1),
-    0x4f: partial(bit_register, 8, 'A', 1),
+    0x48: partial(bit, cycles=8, get=get_register_B, bit=1),
+    0x49: partial(bit, cycles=8, get=get_register_C, bit=1),
+    0x4a: partial(bit, cycles=8, get=get_register_D, bit=1),
+    0x4b: partial(bit, cycles=8, get=get_register_E, bit=1),
+    0x4c: partial(bit, cycles=8, get=get_register_H, bit=1),
+    0x4d: partial(bit, cycles=8, get=get_register_L, bit=1),
+    0x4e: partial(bit, cycles=16, get=get_indirect_byte_HL, bit=1),
+    0x4f: partial(bit, cycles=8, get=get_register_A, bit=1),
 
-    0x50: partial(bit_register, 8, 'B', 2),
-    0x51: partial(bit_register, 8, 'C', 2),
-    0x52: partial(bit_register, 8, 'D', 2),
-    0x53: partial(bit_register, 8, 'E', 2),
-    0x54: partial(bit_register, 8, 'H', 2),
-    0x55: partial(bit_register, 8, 'L', 2),
-    0x56: partial(bit_indirect, 16, 'HL', 2),
-    0x57: partial(bit_register, 8, 'A', 2),
+    0x50: partial(bit, cycles=8, get=get_register_B, bit=2),
+    0x51: partial(bit, cycles=8, get=get_register_C, bit=2),
+    0x52: partial(bit, cycles=8, get=get_register_D, bit=2),
+    0x53: partial(bit, cycles=8, get=get_register_E, bit=2),
+    0x54: partial(bit, cycles=8, get=get_register_H, bit=2),
+    0x55: partial(bit, cycles=8, get=get_register_L, bit=2),
+    0x56: partial(bit, cycles=16, get=get_indirect_byte_HL, bit=2),
+    0x57: partial(bit, cycles=8, get=get_register_A, bit=2),
 
-    0x58: partial(bit_register, 8, 'B', 3),
-    0x59: partial(bit_register, 8, 'C', 3),
-    0x5a: partial(bit_register, 8, 'D', 3),
-    0x5b: partial(bit_register, 8, 'E', 3),
-    0x5c: partial(bit_register, 8, 'H', 3),
-    0x5d: partial(bit_register, 8, 'L', 3),
-    0x5e: partial(bit_indirect, 16, 'HL', 3),
-    0x5f: partial(bit_register, 8, 'A', 3),
+    0x58: partial(bit, cycles=8, get=get_register_B, bit=3),
+    0x59: partial(bit, cycles=8, get=get_register_C, bit=3),
+    0x5a: partial(bit, cycles=8, get=get_register_D, bit=3),
+    0x5b: partial(bit, cycles=8, get=get_register_E, bit=3),
+    0x5c: partial(bit, cycles=8, get=get_register_H, bit=3),
+    0x5d: partial(bit, cycles=8, get=get_register_L, bit=3),
+    0x5e: partial(bit, cycles=16, get=get_indirect_byte_HL, bit=3),
+    0x5f: partial(bit, cycles=8, get=get_register_A, bit=3),
 
-    0x60: partial(bit_register, 8, 'B', 4),
-    0x61: partial(bit_register, 8, 'C', 4),
-    0x62: partial(bit_register, 8, 'D', 4),
-    0x63: partial(bit_register, 8, 'E', 4),
-    0x64: partial(bit_register, 8, 'H', 4),
-    0x65: partial(bit_register, 8, 'L', 4),
-    0x66: partial(bit_indirect, 16, 'HL', 4),
-    0x67: partial(bit_register, 8, 'A', 4),
+    0x60: partial(bit, cycles=8, get=get_register_B, bit=4),
+    0x61: partial(bit, cycles=8, get=get_register_C, bit=4),
+    0x62: partial(bit, cycles=8, get=get_register_D, bit=4),
+    0x63: partial(bit, cycles=8, get=get_register_E, bit=4),
+    0x64: partial(bit, cycles=8, get=get_register_H, bit=4),
+    0x65: partial(bit, cycles=8, get=get_register_L, bit=4),
+    0x66: partial(bit, cycles=16, get=get_indirect_byte_HL, bit=4),
+    0x67: partial(bit, cycles=8, get=get_register_A, bit=4),
 
-    0x68: partial(bit_register, 8, 'B', 5),
-    0x69: partial(bit_register, 8, 'C', 5),
-    0x6a: partial(bit_register, 8, 'D', 5),
-    0x6b: partial(bit_register, 8, 'E', 5),
-    0x6c: partial(bit_register, 8, 'H', 5),
-    0x6d: partial(bit_register, 8, 'L', 5),
-    0x6e: partial(bit_indirect, 16, 'HL', 5),
-    0x6f: partial(bit_register, 8, 'A', 5),
+    0x68: partial(bit, cycles=8, get=get_register_B, bit=5),
+    0x69: partial(bit, cycles=8, get=get_register_C, bit=5),
+    0x6a: partial(bit, cycles=8, get=get_register_D, bit=5),
+    0x6b: partial(bit, cycles=8, get=get_register_E, bit=5),
+    0x6c: partial(bit, cycles=8, get=get_register_H, bit=5),
+    0x6d: partial(bit, cycles=8, get=get_register_L, bit=5),
+    0x6e: partial(bit, cycles=16, get=get_indirect_byte_HL, bit=5),
+    0x6f: partial(bit, cycles=8, get=get_register_A, bit=5),
 
-    0x70: partial(bit_register, 8, 'B', 6),
-    0x71: partial(bit_register, 8, 'C', 6),
-    0x72: partial(bit_register, 8, 'D', 6),
-    0x73: partial(bit_register, 8, 'E', 6),
-    0x74: partial(bit_register, 8, 'H', 6),
-    0x75: partial(bit_register, 8, 'L', 6),
-    0x76: partial(bit_indirect, 16, 'HL', 6),
-    0x77: partial(bit_register, 8, 'A', 6),
+    0x70: partial(bit, cycles=8, get=get_register_B, bit=6),
+    0x71: partial(bit, cycles=8, get=get_register_C, bit=6),
+    0x72: partial(bit, cycles=8, get=get_register_D, bit=6),
+    0x73: partial(bit, cycles=8, get=get_register_E, bit=6),
+    0x74: partial(bit, cycles=8, get=get_register_H, bit=6),
+    0x75: partial(bit, cycles=8, get=get_register_L, bit=6),
+    0x76: partial(bit, cycles=16, get=get_indirect_byte_HL, bit=6),
+    0x77: partial(bit, cycles=8, get=get_register_A, bit=6),
 
-    0x78: partial(bit_register, 8, 'B', 7),
-    0x79: partial(bit_register, 8, 'C', 7),
-    0x7a: partial(bit_register, 8, 'D', 7),
-    0x7b: partial(bit_register, 8, 'E', 7),
-    0x7c: partial(bit_register, 8, 'H', 7),
-    0x7d: partial(bit_register, 8, 'L', 7),
-    0x7e: partial(bit_indirect, 16, 'HL', 7),
-    0x7f: partial(bit_register, 8, 'A', 7),
+    0x78: partial(bit, cycles=8, get=get_register_B, bit=7),
+    0x79: partial(bit, cycles=8, get=get_register_C, bit=7),
+    0x7a: partial(bit, cycles=8, get=get_register_D, bit=7),
+    0x7b: partial(bit, cycles=8, get=get_register_E, bit=7),
+    0x7c: partial(bit, cycles=8, get=get_register_H, bit=7),
+    0x7d: partial(bit, cycles=8, get=get_register_L, bit=7),
+    0x7e: partial(bit, cycles=16, get=get_indirect_byte_HL, bit=7),
+    0x7f: partial(bit, cycles=8, get=get_register_A, bit=7),
 }
