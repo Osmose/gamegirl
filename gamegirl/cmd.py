@@ -95,13 +95,13 @@ class CPU(object):
     def execute(self, opcode):
         instruction = OPCODES.get(opcode)
         if not instruction:
-            raise Exception('Unknown opcode: 0x{0:02x}'.format(opcode))
+            raise Exception('Unknown opcode: ${0:02x}'.format(opcode))
 
         try:
             log = instruction(cpu=self)
         except ValueError:
             # Log the opcode for debugging purposes.
-            print 'Opcode: 0x{0:02x}'.format(opcode)
+            print 'Opcode: ${0:02x}'.format(opcode)
             raise
 
         if self.debug:
@@ -121,7 +121,7 @@ def main():
 
     # Print some info about the game we're running.
     print 'Game: ' + rom.title
-    print 'Start address: 0x{0:04x}'.format(rom.start_address)
+    print 'Start address: ${0:04x}'.format(rom.start_address)
     print 'Game code: ' + rom.game_code
 
     if rom.gbc_compatible == Rom.GBC_INCOMPATIBLE:
@@ -139,7 +139,7 @@ def main():
     print 'Destination: ' + ('Other' if rom.destination == Rom.DESTINATION_OTHER else 'Japan')
     print 'Mask ROM Version: {0}'.format(rom.mask_rom_version)
     print 'Complement check: ' + ('Passed' if rom.passed_complement_check else 'Failed')
-    print 'Checksum: 0x{0:04x}'.format(rom.checksum)
+    print 'Checksum: ${0:04x}'.format(rom.checksum)
     print '-------------------'
 
     memory = Memory(rom=rom, bios=bios)

@@ -120,22 +120,37 @@ class MappedRegisterMemory(object):
 
 
     def read_short(self, address):
-        return (self.registers[address].read() &
-                (self.registers[address + 1].read() << 8))
+        try:
+            return (self.registers[address].read() &
+                    (self.registers[address + 1].read() << 8))
+        except KeyError:
+            raise ValueError('Missing register: ${0:02x}'.format(address))
 
     def read_byte(self, address):
-        return self.registers[address].read()
+        try:
+            return self.registers[address].read()
+        except KeyError:
+            raise ValueError('Missing register: ${0:02x}'.format(address))
 
     def read_bytes(self, start_address, end_address):
-        return [self.registers[address].read()
-                for address in range(start_address, end_address)]
+        try:
+            return [self.registers[address].read()
+                    for address in range(start_address, end_address)]
+        except KeyError:
+            raise ValueError('Missing register: ${0:02x}'.format(address))
 
     def write_short(self, address, value):
-        self.registers[address].write(value & 0xff)
-        self.registers[address + 1].write((value & 0xff00) >> 8)
+        try:
+            self.registers[address].write(value & 0xff)
+            self.registers[address + 1].write((value & 0xff00) >> 8)
+        except KeyError:
+            raise ValueError('Missing register: ${0:02x}'.format(address))
 
     def write_byte(self, address, value):
-        self.registers[address].write(value)
+        try:
+            self.registers[address].write(value)
+        except KeyError:
+            raise ValueError('Missing register: ${0:02x}'.format(address))
 
 
 

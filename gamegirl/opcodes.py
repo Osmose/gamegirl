@@ -5,12 +5,12 @@ from functools import partial
 
 def get_immediate_byte(cpu):
     value = cpu.read_next_byte()
-    return value, '0x{0:04x}'.format(value)
+    return value, '${0:04x}'.format(value)
 
 
 def get_immediate_short(cpu):
     value = cpu.read_next_short()
-    return value, '0x{0:04x}'.format(value)
+    return value, '${0:04x}'.format(value)
 
 
 def get_register(cpu, register):
@@ -49,7 +49,7 @@ get_indirect_byte_DE = partial(get_indirect_byte, 'DE')
 
 def get_indirect_byte_immediate(cpu):
     address = cpu.read_next_short()
-    return cpu.memory.read_byte(address), '(0x{0:04x})'.format(address)
+    return cpu.memory.read_byte(address), '(${0:04x})'.format(address)
 
 
 ## Writing Values ######################################################
@@ -79,6 +79,15 @@ def write_indirect_byte(cpu, register, value):
 
 
 write_indirect_byte_HL = partial(write_indirect_byte, register='HL')
+
+
+def write_indirect_offset_byte(cpu, register, value):
+    address = 0xff00 + getattr(cpu, register)
+    cpu.memory.write_byte(address, value)
+    return '($ff00+{0})'.format(register)
+
+
+write_indirect_offset_byte_C = partial(write_indirect_offset_byte, register='C')
 
 
 def write_indirect_decrement(cpu, register, value):
@@ -167,7 +176,7 @@ def jump_condition(cpu, get, condition, cycles):
         cpu.PC += value
 
     cpu.cycle(cycles)
-    return 'JR {0},0x{1:02x}'.format(log_operand, value)
+    return 'JR {0},${1:02x}'.format(log_operand, value)
 
 
 def cb_dispatch(cpu):
@@ -175,7 +184,7 @@ def cb_dispatch(cpu):
     try:
         return CB_OPCODES[opcode](cpu=cpu)
     except KeyError:
-        raise ValueError('Invalid CB opcode: 0x{0:02x}'.format(opcode))
+        raise ValueError('Invalid CB opcode: ${0:02x}'.format(opcode))
 
 
 def bit(cpu, get, bit, cycles):
@@ -291,6 +300,7 @@ OPCODES = {
     0x36: partial(load, cycles=12, get=get_immediate_byte, write=write_indirect_byte_HL),
 
     0x32: partial(load, cycles=8, get=get_register_A, write=write_indirect_decrement_HL),
+    0xe2: partial(load, cycles=8, get=get_register_A, write=write_indirect_offset_byte_C),
 
     0xcb: cb_dispatch,
 
