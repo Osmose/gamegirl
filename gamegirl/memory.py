@@ -78,7 +78,14 @@ class Ram(ReadableMemory, WriteableMemory):
         self.raw_data = bytearray(size)
 
 
-def register_attribute(mask, shift):
+def register_attribute(mask):
+    # Determine shift by testing bits until we find a non-zero one.
+    shift = 0
+    test_mask = 1
+    while mask & test_mask == 0:
+        shift += 1
+        test_mask = test_mask << 1
+
     def getter(self):
         return (self.value & mask) >> shift
 
@@ -93,7 +100,8 @@ def register_attribute(mask, shift):
 class MappedRegister(object):
     name = None
     reset_value = 0
-    mask = 0xff
+    write_mask = 0xff
+    read_mask = 0xff
 
     def __init__(self):
         self.value = 0
@@ -102,10 +110,10 @@ class MappedRegister(object):
         self.value = self.reset_value
 
     def write(self, value):
-        self.value = value & self.mask
+        self.value = value & self.write_mask
 
     def read(self):
-        return self.value
+        return self.value & self.read_mask
 
 
 class MappedRegisterMemory(object):
