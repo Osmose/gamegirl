@@ -198,6 +198,14 @@ def bit(cpu, get, bit, cycles):
     return 'BIT {0},{1}'.format(bit, debug_value)
 
 
+def increment(cpu, get, write, cycles):
+    value, debug_value = get(cpu=cpu)
+    write(cpu=cpu, value=value + 1)
+
+    cpu.cycle(cycles)
+    return 'INC ' + debug_value
+
+
 ## Jump Tables #########################################################
 
 OPCODES = {
@@ -308,6 +316,15 @@ OPCODES = {
     0x28: partial(jump_condition, cycles=8, get=get_immediate_byte, condition=is_flag_Z_set),
     0x30: partial(jump_condition, cycles=8, get=get_immediate_byte, condition=is_flag_C_reset),
     0x38: partial(jump_condition, cycles=8, get=get_immediate_byte, condition=is_flag_C_set),
+
+    0x3c: partial(increment, cycles=4, get=get_register_A, write=write_register_A),
+    0x04: partial(increment, cycles=4, get=get_register_B, write=write_register_B),
+    0x0c: partial(increment, cycles=4, get=get_register_C, write=write_register_C),
+    0x14: partial(increment, cycles=4, get=get_register_D, write=write_register_D),
+    0x1c: partial(increment, cycles=4, get=get_register_E, write=write_register_E),
+    0x24: partial(increment, cycles=4, get=get_register_H, write=write_register_H),
+    0x2c: partial(increment, cycles=4, get=get_register_L, write=write_register_L),
+    0x34: partial(increment, cycles=12, get=get_indirect_byte_HL, write=write_indirect_byte_HL),
 }
 
 
