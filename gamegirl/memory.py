@@ -234,7 +234,7 @@ class Memory(object):
             return self.io_ports, 0
 
         # Stack RAM
-        if 0xff80 <= start_address < end_address <= 0xfffe:
+        if 0xff80 <= start_address < end_address <= 0xffff:
             return self.stack, 0xff80
 
         # Interrupt Enable Register

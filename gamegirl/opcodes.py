@@ -29,6 +29,7 @@ get_register_BC = partial(get_register, register='BC')
 get_register_DE = partial(get_register, register='DE')
 get_register_HL = partial(get_register, register='HL')
 get_register_SP = partial(get_register, register='SP')
+get_register_PC = partial(get_register, register='PC')
 
 
 def get_indirect_register(cpu, register):
@@ -42,9 +43,9 @@ def get_indirect_byte(cpu, register):
     return cpu.memory.read_byte(address), '({0})'.format(register)
 
 
-get_indirect_byte_HL = partial(get_indirect_byte, 'HL')
-get_indirect_byte_BC = partial(get_indirect_byte, 'BC')
-get_indirect_byte_DE = partial(get_indirect_byte, 'DE')
+get_indirect_byte_HL = partial(get_indirect_byte, register='HL')
+get_indirect_byte_BC = partial(get_indirect_byte, register='BC')
+get_indirect_byte_DE = partial(get_indirect_byte, register='DE')
 
 
 def get_indirect_byte_immediate(cpu):
@@ -78,7 +79,15 @@ def write_indirect_byte(cpu, register, value):
     return '({0})'.format(register)
 
 
+write_indirect_byte_BC = partial(write_indirect_byte, register='BC')
+write_indirect_byte_DE = partial(write_indirect_byte, register='DE')
 write_indirect_byte_HL = partial(write_indirect_byte, register='HL')
+
+
+def write_indirect_byte_immediate(cpu, value):
+    address = cpu.read_next_short()
+    cpu.memory.write_byte(address, value)
+    return '(${0:04x})'.format(address)
 
 
 def write_indirect_offset_byte(cpu, register, value):
@@ -88,6 +97,12 @@ def write_indirect_offset_byte(cpu, register, value):
 
 
 write_indirect_offset_byte_C = partial(write_indirect_offset_byte, register='C')
+
+
+def write_indirect_offset_byte_immediate(cpu, value):
+    offset = cpu.read_next_byte()
+    cpu.memory.write_byte(0xff00 + offset, value)
+    return '($ff00+${0:02x})'.format(offset)
 
 
 def write_indirect_decrement(cpu, register, value):
@@ -135,7 +150,7 @@ def load(cpu, get, write, cycles):
 
 def push_short(cpu, get, cycles):
     value, debug_value = get(cpu=cpu)
-    cpu.memory.write_short(cpu.SP, value)
+    cpu.memory.write_short(cpu.SP - 1, value)
     cpu.SP -= 2
 
     cpu.cycle(cycles)
@@ -204,6 +219,15 @@ def increment(cpu, get, write, cycles):
 
     cpu.cycle(cycles)
     return 'INC ' + debug_value
+
+
+def call(cpu, get, cycles):
+    address, debug_address = get(cpu=cpu)
+    push_short(cpu, get_register_PC, 0)
+    cpu.PC = address
+
+    cpu.cycle(cycles)
+    return 'CALL ' + debug_address
 
 
 ## Jump Tables #########################################################
@@ -307,10 +331,23 @@ OPCODES = {
     0x75: partial(load, cycles=8, get=get_register_L, write=write_indirect_byte_HL),
     0x36: partial(load, cycles=12, get=get_immediate_byte, write=write_indirect_byte_HL),
 
+    0x47: partial(load, cycles=4, get=get_register_A, write=write_register_B),
+    0x4f: partial(load, cycles=4, get=get_register_A, write=write_register_C),
+    0x57: partial(load, cycles=4, get=get_register_A, write=write_register_D),
+    0x5f: partial(load, cycles=4, get=get_register_A, write=write_register_E),
+    0x67: partial(load, cycles=4, get=get_register_A, write=write_register_H),
+    0x6f: partial(load, cycles=4, get=get_register_A, write=write_register_L),
+    0x02: partial(load, cycles=8, get=get_register_A, write=write_indirect_byte_BC),
+    0x12: partial(load, cycles=8, get=get_register_A, write=write_indirect_byte_DE),
+    0x77: partial(load, cycles=8, get=get_register_A, write=write_indirect_byte_HL),
+    0xea: partial(load, cycles=16, get=get_register_A, write=write_indirect_byte_immediate),
+
     0x32: partial(load, cycles=8, get=get_register_A, write=write_indirect_decrement_HL),
     0xe2: partial(load, cycles=8, get=get_register_A, write=write_indirect_offset_byte_C),
+    0xe0: partial(load, cycles=12, get=get_register_A, write=write_indirect_offset_byte_immediate),
 
     0xcb: cb_dispatch,
+    0xcd: partial(call, cycles=12, get=get_immediate_short),
 
     0x20: partial(jump_condition, cycles=8, get=get_immediate_byte, condition=is_flag_Z_reset),
     0x28: partial(jump_condition, cycles=8, get=get_immediate_byte, condition=is_flag_Z_set),
