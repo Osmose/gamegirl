@@ -164,7 +164,7 @@ class MappedRegisterMemory(object):
 
 class Memory(object):
     def __init__(self, rom, bios):
-        from gamegirl.sound import sound_ram_registers
+        from gamegirl.registers import register_map
 
         self.rom = rom
         self.bios = bios
@@ -173,8 +173,9 @@ class Memory(object):
         self.wram = Ram(8 * 1024)
         self.stack = Ram(127)
         self.lcd_ram = Ram(8 * 1024)
+        self.wave_pattern_ram = Ram(16)
 
-        self.io_ports = MappedRegisterMemory(sound_ram_registers)
+        self.io_ports = MappedRegisterMemory(register_map)
 
     def read_string(self, address, length):
         memory, offset = self._get_memory(address, address + length)
@@ -223,12 +224,22 @@ class Memory(object):
             return self.wram, 0xe000
 
         # I/O Ports
-        if 0xff00 <= start_address < end_address <= 0xff4c:
+        if 0xff00 <= start_address < end_address <= 0xff30:
+            return self.io_ports, 0
+
+        if 0xff30 <= start_address < end_address <= 0xff40:
+            return self.wave_pattern_ram, 0xff30
+
+        if 0xff40 <= start_address < end_address <= 0xff4c:
             return self.io_ports, 0
 
         # Stack RAM
         if 0xff80 <= start_address < end_address <= 0xfffe:
             return self.stack, 0xff80
+
+        # Interrupt Enable Register
+        if start_address == 0xffff:
+            return self.io_ports, 0
 
         raise ValueError('Invalid memory range: 0x{0:04x} - 0x{1:04x}'
                          .format(start_address, end_address))
