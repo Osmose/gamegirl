@@ -53,6 +53,12 @@ def get_indirect_byte_immediate(cpu):
     return cpu.memory.read_byte(address), '(${0:04x})'.format(address)
 
 
+def get_indirect_offset_byte_immediate(cpu):
+    offset = cpu.read_next_byte()
+    value = cpu.memory.read_byte(0xff00 + offset)
+    return value, '($ff00+${0:02x})'.format(offset)
+
+
 ## Writing Values ######################################################
 
 def write_register(cpu, register, value):
@@ -67,6 +73,7 @@ write_register_D = partial(write_register, register='D')
 write_register_E = partial(write_register, register='E')
 write_register_H = partial(write_register, register='H')
 write_register_L = partial(write_register, register='L')
+write_register_AF = partial(write_register, register='AF')
 write_register_BC = partial(write_register, register='BC')
 write_register_DE = partial(write_register, register='DE')
 write_register_HL = partial(write_register, register='HL')
@@ -115,6 +122,16 @@ def write_indirect_decrement(cpu, register, value):
 write_indirect_decrement_HL = partial(write_indirect_decrement, register='HL')
 
 
+def write_indirect_increment(cpu, register, value):
+    address = getattr(cpu, register)
+    cpu.memory.write_byte(address, value)
+    setattr(cpu, register, address + 1)
+    return '({0}+)'.format(register)
+
+
+write_indirect_increment_HL = partial(write_indirect_increment, register='HL')
+
+
 ## Checking Flags ######################################################
 
 def is_flag_set(flag, cpu):
@@ -150,11 +167,18 @@ def load(cpu, get, write, cycles):
 
 def push_short(cpu, get, cycles):
     value, debug_value = get(cpu=cpu)
-    cpu.memory.write_short(cpu.SP - 1, value)
-    cpu.SP -= 2
+    cpu.stack.push_short(value)
 
     cpu.cycle(cycles)
     return 'PUSH ' + debug_value
+
+
+def pop_short(cpu, write, cycles):
+    value = cpu.stack.pop_short()
+    debug_destination = write(cpu=cpu, value=value)
+
+    cpu.cycle(cycles)
+    return 'POP ' + debug_destination
 
 
 def xor(cpu, get, cycles):
@@ -221,13 +245,54 @@ def increment(cpu, get, write, cycles):
     return 'INC ' + debug_value
 
 
+def decrement(cpu, get, write, cycles):
+    value, debug_value = get(cpu=cpu)
+    write(cpu=cpu, value=value - 1)
+
+    cpu.cycle(cycles)
+    return 'DEC ' + debug_value
+
+
 def call(cpu, get, cycles):
     address, debug_address = get(cpu=cpu)
-    push_short(cpu, get_register_PC, 0)
+    cpu.stack.push_short(cpu.PC)
     cpu.PC = address
 
     cpu.cycle(cycles)
     return 'CALL ' + debug_address
+
+
+def op_return(cpu, cycles):
+    address = cpu.stack.pop_short()
+    cpu.PC = address
+
+    cpu.cycle(cycles)
+    return 'RET'
+
+
+def rotate_left(cpu, get, write, cycles, mnemonic=None):
+    value, debug_value = get(cpu=cpu)
+    result = value << 1
+    write(cpu=cpu, value=result)
+    cpu.flag_Z = result == 0
+    cpu.flag_N = 0
+    cpu.flag_H = 0
+    cpu.flag_C = value & 0b10000000
+
+    cpu.cycle(cycles)
+    return mnemonic or ('RL ' + debug_value)
+
+
+def compare(cpu, get, cycles):
+    value, debug_value = get(cpu=cpu)
+    result = cpu.A - value
+    cpu.flag_Z = result == 0
+    cpu.flag_N = 1
+    cpu.flag_H = (((value & 0xf) + (cpu.A & 0xf)) & 0x10) >> 1
+    cpu.flag_C = result > 0
+
+    cpu.cycle(cycles)
+    return 'CP ' + debug_value
 
 
 ## Jump Tables #########################################################
@@ -249,6 +314,11 @@ OPCODES = {
     0xc5: partial(push_short, cycles=16, get=get_register_BC),
     0xd5: partial(push_short, cycles=16, get=get_register_DE),
     0xe5: partial(push_short, cycles=16, get=get_register_HL),
+
+    0xf1: partial(pop_short, cycles=12, write=write_register_AF),
+    0xc1: partial(pop_short, cycles=12, write=write_register_BC),
+    0xd1: partial(pop_short, cycles=12, write=write_register_DE),
+    0xe1: partial(pop_short, cycles=12, write=write_register_HL),
 
     0xaf: partial(xor, cycles=4, get=get_register_A),
     0xa8: partial(xor, cycles=4, get=get_register_B),
@@ -345,9 +415,13 @@ OPCODES = {
     0x32: partial(load, cycles=8, get=get_register_A, write=write_indirect_decrement_HL),
     0xe2: partial(load, cycles=8, get=get_register_A, write=write_indirect_offset_byte_C),
     0xe0: partial(load, cycles=12, get=get_register_A, write=write_indirect_offset_byte_immediate),
+    0xf0: partial(load, cycles=12, get=get_indirect_offset_byte_immediate, write=write_register_A),
+
+    0x22: partial(load, cycles=8, get=get_register_A, write=write_indirect_increment_HL),
 
     0xcb: cb_dispatch,
     0xcd: partial(call, cycles=12, get=get_immediate_short),
+    0xc9: partial(op_return, cycles=8),
 
     0x20: partial(jump_condition, cycles=8, get=get_immediate_byte, condition=is_flag_Z_reset),
     0x28: partial(jump_condition, cycles=8, get=get_immediate_byte, condition=is_flag_Z_set),
@@ -362,6 +436,32 @@ OPCODES = {
     0x24: partial(increment, cycles=4, get=get_register_H, write=write_register_H),
     0x2c: partial(increment, cycles=4, get=get_register_L, write=write_register_L),
     0x34: partial(increment, cycles=12, get=get_indirect_byte_HL, write=write_indirect_byte_HL),
+    0x03: partial(increment, cycles=8, get=get_register_BC, write=write_register_BC),
+    0x13: partial(increment, cycles=8, get=get_register_DE, write=write_register_DE),
+    0x23: partial(increment, cycles=8, get=get_register_HL, write=write_register_HL),
+    0x33: partial(increment, cycles=8, get=get_register_SP, write=write_register_SP),
+
+    0x3d: partial(decrement, cycles=4, get=get_register_A, write=write_register_A),
+    0x05: partial(decrement, cycles=4, get=get_register_B, write=write_register_B),
+    0x0d: partial(decrement, cycles=4, get=get_register_C, write=write_register_C),
+    0x15: partial(decrement, cycles=4, get=get_register_D, write=write_register_D),
+    0x1d: partial(decrement, cycles=4, get=get_register_E, write=write_register_E),
+    0x25: partial(decrement, cycles=4, get=get_register_H, write=write_register_H),
+    0x2d: partial(decrement, cycles=4, get=get_register_L, write=write_register_L),
+    0x35: partial(decrement, cycles=12, get=get_indirect_byte_HL, write=write_indirect_byte_HL),
+
+    0x17: partial(rotate_left, cycles=4, get=get_register_A, write=write_register_A,
+                  mnemonic='RLA'),
+
+    0xbf: partial(compare, cycles=4, get=get_register_A),
+    0xb8: partial(compare, cycles=4, get=get_register_B),
+    0xb9: partial(compare, cycles=4, get=get_register_C),
+    0xba: partial(compare, cycles=4, get=get_register_D),
+    0xbb: partial(compare, cycles=4, get=get_register_E),
+    0xbc: partial(compare, cycles=4, get=get_register_H),
+    0xbd: partial(compare, cycles=4, get=get_register_L),
+    0xbe: partial(compare, cycles=8, get=get_indirect_byte_HL),
+    0xfe: partial(compare, cycles=8, get=get_immediate_byte),
 }
 
 
@@ -446,4 +546,13 @@ CB_OPCODES = {
     0x7d: partial(bit, cycles=8, get=get_register_L, bit=7),
     0x7e: partial(bit, cycles=16, get=get_indirect_byte_HL, bit=7),
     0x7f: partial(bit, cycles=8, get=get_register_A, bit=7),
+
+    0x17: partial(rotate_left, cycles=8, get=get_register_A, write=write_register_A),
+    0x10: partial(rotate_left, cycles=8, get=get_register_B, write=write_register_B),
+    0x11: partial(rotate_left, cycles=8, get=get_register_C, write=write_register_C),
+    0x12: partial(rotate_left, cycles=8, get=get_register_D, write=write_register_D),
+    0x13: partial(rotate_left, cycles=8, get=get_register_E, write=write_register_E),
+    0x14: partial(rotate_left, cycles=8, get=get_register_H, write=write_register_H),
+    0x15: partial(rotate_left, cycles=8, get=get_register_L, write=write_register_L),
+    0x16: partial(rotate_left, cycles=16, get=get_indirect_byte_HL, write=write_indirect_byte_HL),
 }

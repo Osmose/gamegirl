@@ -22,6 +22,20 @@ def flag(bit):
     return property(getter, setter)
 
 
+class Stack(object):
+    def __init__(self, cpu):
+        self.cpu = cpu
+
+    def push_short(self, value):
+        self.cpu.memory.write_short(self.cpu.SP - 1, value)
+        self.cpu.SP -= 2
+
+    def pop_short(self):
+        value = self.cpu.memory.read_short(self.cpu.SP - 1)
+        self.cpu.SP += 2
+        return value
+
+
 class CPU(object):
     BYTE_REGISTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'H', 'L']
     SHORT_REGISTERS = ['PC', 'SP']
@@ -40,6 +54,7 @@ class CPU(object):
         self.debug = debug
 
         self.memory = memory
+        self.stack = Stack(self)
         self.cycles = 0
 
         self.A = 0
