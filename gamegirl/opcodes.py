@@ -1,20 +1,29 @@
-from functools import partial
+from functools import partial, wraps
 
 
 ## Reading Values ######################################################
 
 def get_immediate_byte(cpu):
     value = cpu.read_next_byte()
-    return value, '${0:04x}'.format(value)
+    if cpu.debug:
+        cpu.debug_kwargs['source'] = '${0:02x}'.format(value)
+
+    return value
 
 
 def get_immediate_short(cpu):
     value = cpu.read_next_short()
-    return value, '${0:04x}'.format(value)
+    if cpu.debug:
+        cpu.debug_kwargs['source'] = '${0:04x}'.format(value)
+
+    return value
 
 
 def get_register(cpu, register):
-    return getattr(cpu, register), register
+    if cpu.debug:
+        cpu.debug_kwargs['source'] = register
+
+    return getattr(cpu, register)
 
 
 get_register_A = partial(get_register, register='A')
@@ -32,15 +41,12 @@ get_register_SP = partial(get_register, register='SP')
 get_register_PC = partial(get_register, register='PC')
 
 
-def get_indirect_register(cpu, register):
-    address = getattr(cpu, register)
-    value = cpu.memory.read_byte(address)
-    return value, '({0})'.format(register)
-
-
 def get_indirect_byte(cpu, register):
+    if cpu.debug:
+        cpu.debug_kwargs['source'] = '({0})'.format(register)
+
     address = getattr(cpu, register)
-    return cpu.memory.read_byte(address), '({0})'.format(register)
+    return cpu.memory.read_byte(address)
 
 
 get_indirect_byte_HL = partial(get_indirect_byte, register='HL')
@@ -50,20 +56,27 @@ get_indirect_byte_DE = partial(get_indirect_byte, register='DE')
 
 def get_indirect_byte_immediate(cpu):
     address = cpu.read_next_short()
-    return cpu.memory.read_byte(address), '(${0:04x})'.format(address)
+    if cpu.debug:
+        cpu.debug_kwargs['source'] = '(${0:04x})'.format(address)
+
+    return cpu.memory.read_byte(address)
 
 
 def get_indirect_offset_byte_immediate(cpu):
     offset = cpu.read_next_byte()
-    value = cpu.memory.read_byte(0xff00 + offset)
-    return value, '($ff00+${0:02x})'.format(offset)
+    if cpu.debug:
+        cpu.debug_kwargs['source'] = '($ff00+${0:02x})'.format(offset)
+
+    return cpu.memory.read_byte(0xff00 + offset)
 
 
 ## Writing Values ######################################################
 
 def write_register(cpu, register, value):
     setattr(cpu, register, value)
-    return register
+
+    if cpu.debug:
+        cpu.debug_kwargs['destination'] = register
 
 
 write_register_A = partial(write_register, register='A')
@@ -83,7 +96,9 @@ write_register_SP = partial(write_register, register='SP')
 def write_indirect_byte(cpu, register, value):
     address = getattr(cpu, register)
     cpu.memory.write_byte(address, value)
-    return '({0})'.format(register)
+
+    if cpu.debug:
+        cpu.debug_kwargs['destination'] = '({0})'.format(register)
 
 
 write_indirect_byte_BC = partial(write_indirect_byte, register='BC')
@@ -94,13 +109,17 @@ write_indirect_byte_HL = partial(write_indirect_byte, register='HL')
 def write_indirect_byte_immediate(cpu, value):
     address = cpu.read_next_short()
     cpu.memory.write_byte(address, value)
-    return '(${0:04x})'.format(address)
+
+    if cpu.debug:
+        cpu.debug_kwargs['destination'] = '(${0:04x})'.format(address)
 
 
 def write_indirect_offset_byte(cpu, register, value):
     address = 0xff00 + getattr(cpu, register)
     cpu.memory.write_byte(address, value)
-    return '($ff00+{0})'.format(register)
+
+    if cpu.debug:
+        cpu.debug_kwargs['destination'] = '($ff00+{0})'.format(register)
 
 
 write_indirect_offset_byte_C = partial(write_indirect_offset_byte, register='C')
@@ -109,14 +128,18 @@ write_indirect_offset_byte_C = partial(write_indirect_offset_byte, register='C')
 def write_indirect_offset_byte_immediate(cpu, value):
     offset = cpu.read_next_byte()
     cpu.memory.write_byte(0xff00 + offset, value)
-    return '($ff00+${0:02x})'.format(offset)
+
+    if cpu.debug:
+        cpu.debug_kwargs['destination'] = '($ff00+${0:02x})'.format(offset)
 
 
 def write_indirect_decrement(cpu, register, value):
     address = getattr(cpu, register)
     cpu.memory.write_byte(address, value)
     setattr(cpu, register, address - 1)
-    return '({0}-)'.format(register)
+
+    if cpu.debug:
+        cpu.debug_kwargs['destination'] = '({0}-)'.format(register)
 
 
 write_indirect_decrement_HL = partial(write_indirect_decrement, register='HL')
@@ -126,7 +149,9 @@ def write_indirect_increment(cpu, register, value):
     address = getattr(cpu, register)
     cpu.memory.write_byte(address, value)
     setattr(cpu, register, address + 1)
-    return '({0}+)'.format(register)
+
+    if cpu.debug:
+        cpu.debug_kwargs['destination'] = '({0}+)'.format(register)
 
 
 write_indirect_increment_HL = partial(write_indirect_increment, register='HL')
@@ -135,7 +160,9 @@ write_indirect_increment_HL = partial(write_indirect_increment, register='HL')
 ## Checking Flags ######################################################
 
 def is_flag_set(flag, cpu):
-    return bool(getattr(cpu, 'flag_' + flag)), flag
+    if cpu.debug:
+        cpu.debug_kwargs['condition'] = flag
+    return bool(getattr(cpu, 'flag_' + flag))
 
 
 is_flag_Z_set = partial(is_flag_set, 'Z')
@@ -145,8 +172,9 @@ is_flag_C_set = partial(is_flag_set, 'C')
 
 
 def is_flag_reset(flag, cpu):
-    is_set, debug_operand = is_flag_set(flag, cpu)
-    return not is_set, 'N' + debug_operand
+    if cpu.debug:
+        cpu.debug_kwargs['condition'] = 'N' + flag
+    return not bool(getattr(cpu, 'flag_' + flag))
 
 
 is_flag_Z_reset = partial(is_flag_reset, 'Z')
@@ -157,32 +185,55 @@ is_flag_C_reset = partial(is_flag_reset, 'C')
 
 ## Instructions ########################################################
 
-def load(cpu, get, write, cycles):
-    value, debug_value = get(cpu=cpu)
-    debug_destination = write(cpu=cpu, value=value)
+def instruction(debug_string):
+    """
+    Decorator for instructions that handles running CPU cycles and
+    setting up debug logging if necessary.
+    """
+    def decorator(func):
+        @wraps(func)
+        def wrapped(**kwargs):
+            cycles = kwargs.pop('cycles', None)
+            cpu = kwargs.get('cpu')
 
-    cpu.cycle(cycles)
-    return 'LD {0},{1}'.format(debug_destination, debug_value)
+            # Set up debug logging first, in case the operation wants
+            # to override anything (ex: RLA overriding debug string).
+            if cpu and cpu.debug:
+                cpu.debug_string = debug_string
+                cpu.debug_kwargs.update(kwargs)
+
+            # Execute instruction.
+            func(**kwargs)
+
+            # Run cycles if specified.
+            if cpu and cycles:
+                cpu.cycle(cycles)
+
+        return wrapped
+    return decorator
 
 
-def push_short(cpu, get, cycles):
-    value, debug_value = get(cpu=cpu)
+@instruction('LD {destination},{source}')
+def load(cpu, get, write):
+    value = get(cpu=cpu)
+    write(cpu=cpu, value=value)
+
+
+@instruction('PUSH {source}')
+def push_short(cpu, get):
+    value = get(cpu=cpu)
     cpu.stack.push_short(value)
 
-    cpu.cycle(cycles)
-    return 'PUSH ' + debug_value
 
-
-def pop_short(cpu, write, cycles):
+@instruction('POP {destination}')
+def pop_short(cpu, write):
     value = cpu.stack.pop_short()
-    debug_destination = write(cpu=cpu, value=value)
-
-    cpu.cycle(cycles)
-    return 'POP ' + debug_destination
+    write(cpu=cpu, value=value)
 
 
-def xor(cpu, get, cycles):
-    value, debug_value = get(cpu=cpu)
+@instruction('XOR {source}')
+def xor(cpu, get):
+    value = get(cpu=cpu)
     cpu.A = cpu.A ^ value
 
     cpu.flag_Z = cpu.A == 0
@@ -190,12 +241,10 @@ def xor(cpu, get, cycles):
     cpu.flag_H = 0
     cpu.flag_C = 0
 
-    cpu.cycle(cycles)
-    return 'XOR ' + debug_value
 
-
-def swap(cpu, get, write, cycles):
-    value, debug_value = get(cpu=cpu)
+@instruction('SWAP {source}')
+def swap(cpu, get, write):
+    value = get(cpu=cpu)
     result = (value >> 4) & (value << 4)
     write(cpu=cpu, value=result)
 
@@ -204,21 +253,16 @@ def swap(cpu, get, write, cycles):
     cpu.flag_H = 0
     cpu.flag_C = 0
 
-    cpu.cycle(cycles)
-    return 'SWAP ' + debug_value
 
-
-def jump_condition(cpu, get, condition, cycles):
-    value, _ = get(cpu=cpu)
-    result, debug_operand = condition(cpu=cpu)
-    if result:
+@instruction('JR {condition},{source}')
+def jump_condition(cpu, get, condition):
+    value = get(cpu=cpu)
+    if condition(cpu=cpu):
         cpu.PC += value
-
-    cpu.cycle(cycles)
-    return 'JR {0},${1:02x}'.format(debug_operand, value)
 
 
 def cb_dispatch(cpu):
+    """Dispatch to special CB prefix table of opcodes."""
     opcode = cpu.read_next_byte()
     try:
         return CB_OPCODES[opcode](cpu=cpu)
@@ -226,60 +270,50 @@ def cb_dispatch(cpu):
         raise ValueError('Invalid CB opcode: ${0:02x}'.format(opcode))
 
 
-def bit(cpu, get, bit, cycles):
-    value, debug_value = get(cpu=cpu)
+@instruction('BIT {bit},{source}')
+def bit(cpu, get, bit):
+    value = get(cpu=cpu)
     result = (value >> bit) & 0x1
     cpu.flag_Z = result == 0
     cpu.flag_N = 0
     cpu.flag_H = 1
 
-    cpu.cycle(cycles)
-    return 'BIT {0},{1}'.format(bit, debug_value)
 
-
-def increment(cpu, get, write, cycles):
-    value, debug_value = get(cpu=cpu)
+@instruction('INC {source}')
+def increment(cpu, get, write):
+    value = get(cpu=cpu)
     write(cpu=cpu, value=value + 1)
 
-    cpu.cycle(cycles)
-    return 'INC ' + debug_value
 
-
-def decrement(cpu, get, write, cycles):
-    value, debug_value = get(cpu=cpu)
+@instruction('DEC {source}')
+def decrement(cpu, get, write):
+    value = get(cpu=cpu)
     write(cpu=cpu, value=value - 1)
 
-    cpu.cycle(cycles)
-    return 'DEC ' + debug_value
 
-
-def call(cpu, get, cycles):
-    address, debug_address = get(cpu=cpu)
+@instruction('CALL {source}')
+def call(cpu, get):
+    address = get(cpu=cpu)
     cpu.stack.push_short(cpu.PC)
     cpu.PC = address
 
-    cpu.cycle(cycles)
-    return 'CALL ' + debug_address
 
-
-def op_return(cpu, cycles):
+@instruction('RET')
+def op_return(cpu):
     address = cpu.stack.pop_short()
     cpu.PC = address
 
-    cpu.cycle(cycles)
-    return 'RET'
 
-
-def op_return_condition(cpu, condition, cycles):
-    result, debug_operand = condition(cpu=cpu)
+@instruction('RET {condition}')
+def op_return_condition(cpu, condition):
+    result = condition(cpu=cpu)
     if result:
-        op_return(cpu=cpu, cycles=cycles)
-
-    return 'RET ' + debug_operand
+        op_return(cpu=cpu)
 
 
-def rotate_left(cpu, get, write, cycles, mnemonic=None):
-    value, debug_value = get(cpu=cpu)
+@instruction('RL {source}')
+def rotate_left(cpu, get, write, rla=False):
+    value = get(cpu=cpu)
     result = value << 1
     write(cpu=cpu, value=result)
     cpu.flag_Z = result == 0
@@ -287,40 +321,36 @@ def rotate_left(cpu, get, write, cycles, mnemonic=None):
     cpu.flag_H = 0
     cpu.flag_C = value & 0b10000000
 
-    cpu.cycle(cycles)
-    return mnemonic or ('RL ' + debug_value)
+    # RLA special case for logging.
+    if cpu.debug and rla:
+        cpu.debug_string = 'RLA'
 
 
-def compare(cpu, get, cycles):
-    value, debug_value = get(cpu=cpu)
+@instruction('CP {source}')
+def compare(cpu, get):
+    value = get(cpu=cpu)
     result = cpu.A - value
     cpu.flag_Z = result == 0
     cpu.flag_N = 1
     cpu.flag_H = (((value & 0xf) + (cpu.A & 0xf)) & 0x10) >> 1
     cpu.flag_C = result > 0
 
-    cpu.cycle(cycles)
-    return 'CP ' + debug_value
 
-
-def op_and(cpu, get, cycles):
-    value, debug_value = get(cpu=cpu)
+@instruction('AND {source}')
+def op_and(cpu, get):
+    value = get(cpu=cpu)
     cpu.A = value & cpu.A
     cpu.flag_Z = cpu.A == 0
     cpu.flag_N = 0
     cpu.flag_H = 1
     cpu.flag_C = 0
 
-    return 'AND ' + debug_value
 
-
-def shift_left_reset_lsb(cpu, get, write, cycles):
-    value, debug_value = get(cpu=cpu)
+@instruction('SLA {source}')
+def shift_left_reset_lsb(cpu, get, write):
+    value = get(cpu=cpu)
     cpu.flag_C = (0b10000000 & value) >> 7
     write(cpu=cpu, value=value << 1)
-
-    cpu.cycle(cycles)
-    return 'SLA ' + debug_value
 
 
 ## Jump Tables #########################################################
@@ -483,8 +513,7 @@ OPCODES = {
     0x2d: partial(decrement, cycles=4, get=get_register_L, write=write_register_L),
     0x35: partial(decrement, cycles=12, get=get_indirect_byte_HL, write=write_indirect_byte_HL),
 
-    0x17: partial(rotate_left, cycles=4, get=get_register_A, write=write_register_A,
-                  mnemonic='RLA'),
+    0x17: partial(rotate_left, cycles=4, get=get_register_A, write=write_register_A, rla=True),
 
     0xbf: partial(compare, cycles=4, get=get_register_A),
     0xb8: partial(compare, cycles=4, get=get_register_B),

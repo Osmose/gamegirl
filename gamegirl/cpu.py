@@ -52,6 +52,8 @@ class CPU(object):
 
     def __init__(self, memory, debug=False):
         self.debug = debug
+        self.debug_string = ''
+        self.debug_kwargs = {}
 
         self.memory = memory
         self.stack = Stack(self)
@@ -96,15 +98,19 @@ class CPU(object):
         if not instruction:
             raise Exception('Unknown opcode: ${0:02x}'.format(opcode))
 
+        if self.debug:
+            self.debug_string = 'UNKNOWN'
+            self.debug_kwargs = {}
+
         try:
-            log = instruction(cpu=self)
+            instruction(cpu=self)
         except ValueError:
             # Log the opcode for debugging purposes.
             print 'Opcode: ${0:02x}'.format(opcode)
             raise
 
         if self.debug:
-            print log
+            print self.debug_string.format(**self.debug_kwargs)
 
     def cycle(self, cycles):
         self.cycles += cycles
