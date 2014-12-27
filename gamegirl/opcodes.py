@@ -145,8 +145,8 @@ is_flag_C_set = partial(is_flag_set, 'C')
 
 
 def is_flag_reset(flag, cpu):
-    is_set, log_operand = is_flag_set(flag, cpu)
-    return not is_set, 'N' + log_operand
+    is_set, debug_operand = is_flag_set(flag, cpu)
+    return not is_set, 'N' + debug_operand
 
 
 is_flag_Z_reset = partial(is_flag_reset, 'Z')
@@ -210,12 +210,12 @@ def swap(cpu, get, write, cycles):
 
 def jump_condition(cpu, get, condition, cycles):
     value, _ = get(cpu=cpu)
-    result, log_operand = condition(cpu=cpu)
+    result, debug_operand = condition(cpu=cpu)
     if result:
         cpu.PC += value
 
     cpu.cycle(cycles)
-    return 'JR {0},${1:02x}'.format(log_operand, value)
+    return 'JR {0},${1:02x}'.format(debug_operand, value)
 
 
 def cb_dispatch(cpu):
@@ -270,6 +270,14 @@ def op_return(cpu, cycles):
     return 'RET'
 
 
+def op_return_condition(cpu, condition, cycles):
+    result, debug_operand = condition(cpu=cpu)
+    if result:
+        op_return(cpu=cpu, cycles=cycles)
+
+    return 'RET ' + debug_operand
+
+
 def rotate_left(cpu, get, write, cycles, mnemonic=None):
     value, debug_value = get(cpu=cpu)
     result = value << 1
@@ -293,6 +301,26 @@ def compare(cpu, get, cycles):
 
     cpu.cycle(cycles)
     return 'CP ' + debug_value
+
+
+def op_and(cpu, get, cycles):
+    value, debug_value = get(cpu=cpu)
+    cpu.A = value & cpu.A
+    cpu.flag_Z = cpu.A == 0
+    cpu.flag_N = 0
+    cpu.flag_H = 1
+    cpu.flag_C = 0
+
+    return 'AND ' + debug_value
+
+
+def shift_left_reset_lsb(cpu, get, write, cycles):
+    value, debug_value = get(cpu=cpu)
+    cpu.flag_C = (0b10000000 & value) >> 7
+    write(cpu=cpu, value=value << 1)
+
+    cpu.cycle(cycles)
+    return 'SLA ' + debug_value
 
 
 ## Jump Tables #########################################################
@@ -423,6 +451,11 @@ OPCODES = {
     0xcd: partial(call, cycles=12, get=get_immediate_short),
     0xc9: partial(op_return, cycles=8),
 
+    0xc0: partial(op_return_condition, cycles=8, condition=is_flag_Z_reset),
+    0xc8: partial(op_return_condition, cycles=8, condition=is_flag_Z_set),
+    0xd0: partial(op_return_condition, cycles=8, condition=is_flag_C_reset),
+    0xd8: partial(op_return_condition, cycles=8, condition=is_flag_C_set),
+
     0x20: partial(jump_condition, cycles=8, get=get_immediate_byte, condition=is_flag_Z_reset),
     0x28: partial(jump_condition, cycles=8, get=get_immediate_byte, condition=is_flag_Z_set),
     0x30: partial(jump_condition, cycles=8, get=get_immediate_byte, condition=is_flag_C_reset),
@@ -462,6 +495,16 @@ OPCODES = {
     0xbd: partial(compare, cycles=4, get=get_register_L),
     0xbe: partial(compare, cycles=8, get=get_indirect_byte_HL),
     0xfe: partial(compare, cycles=8, get=get_immediate_byte),
+
+    0xa7: partial(op_and, cycles=4, get=get_register_A),
+    0xa0: partial(op_and, cycles=4, get=get_register_B),
+    0xa1: partial(op_and, cycles=4, get=get_register_C),
+    0xa2: partial(op_and, cycles=4, get=get_register_D),
+    0xa3: partial(op_and, cycles=4, get=get_register_E),
+    0xa4: partial(op_and, cycles=4, get=get_register_H),
+    0xa5: partial(op_and, cycles=4, get=get_register_L),
+    0xa6: partial(op_and, cycles=8, get=get_indirect_byte_HL),
+    0xe6: partial(op_and, cycles=8, get=get_immediate_byte),
 }
 
 
@@ -555,4 +598,13 @@ CB_OPCODES = {
     0x14: partial(rotate_left, cycles=8, get=get_register_H, write=write_register_H),
     0x15: partial(rotate_left, cycles=8, get=get_register_L, write=write_register_L),
     0x16: partial(rotate_left, cycles=16, get=get_indirect_byte_HL, write=write_indirect_byte_HL),
+
+    0x27: partial(shift_left_reset_lsb, cycles=8, get=get_register_A, write=write_register_A),
+    0x20: partial(shift_left_reset_lsb, cycles=8, get=get_register_B, write=write_register_B),
+    0x21: partial(shift_left_reset_lsb, cycles=8, get=get_register_C, write=write_register_C),
+    0x22: partial(shift_left_reset_lsb, cycles=8, get=get_register_D, write=write_register_D),
+    0x23: partial(shift_left_reset_lsb, cycles=8, get=get_register_E, write=write_register_E),
+    0x24: partial(shift_left_reset_lsb, cycles=8, get=get_register_H, write=write_register_H),
+    0x25: partial(shift_left_reset_lsb, cycles=8, get=get_register_L, write=write_register_L),
+    0x26: partial(shift_left_reset_lsb, cycles=16, get=get_indirect_byte_HL, write=write_indirect_byte_HL),
 }
