@@ -183,6 +183,13 @@ is_flag_H_reset = partial(is_flag_reset, 'H')
 is_flag_C_reset = partial(is_flag_reset, 'C')
 
 
+## Utils ###############################################################
+def has_carry(a, b, bit):
+    mask = (2 ** bit) - 1
+    result = (a & mask) + (b & mask)
+    return result >> (bit + 1)
+
+
 ## Instructions ########################################################
 
 def instruction(debug_string):
@@ -351,6 +358,15 @@ def shift_left_reset_lsb(cpu, get, write):
     value = get(cpu=cpu)
     cpu.flag_C = (0b10000000 & value) >> 7
     write(cpu=cpu, value=value << 1)
+
+
+@instruction('ADD HL,{source}')
+def add_hl(cpu, get):
+    value = get(cpu=cpu)
+    cpu.flag_N = 0
+    cpu.flag_H = has_carry(value, cpu.HL, 11)
+    cpu.flag_C = has_carry(value, cpu.HL, 15)
+    cpu.HL += value
 
 
 ## Jump Tables #########################################################
@@ -534,6 +550,11 @@ OPCODES = {
     0xa5: partial(op_and, cycles=4, get=get_register_L),
     0xa6: partial(op_and, cycles=8, get=get_indirect_byte_HL),
     0xe6: partial(op_and, cycles=8, get=get_immediate_byte),
+
+    0x09: partial(add_hl, cycles=8, get=get_register_BC),
+    0x19: partial(add_hl, cycles=8, get=get_register_DE),
+    0x29: partial(add_hl, cycles=8, get=get_register_HL),
+    0x39: partial(add_hl, cycles=8, get=get_register_SP),
 }
 
 
