@@ -104,9 +104,10 @@ class CPU(object):
 
         try:
             instruction(cpu=self)
-        except ValueError:
+        except Exception:
             # Log the opcode for debugging purposes.
             print 'Opcode: ${0:02x}'.format(opcode)
+            print self.debug_string.format(**self.debug_kwargs)
             raise
 
         if self.debug:

@@ -54,6 +54,18 @@ get_indirect_byte_BC = partial(get_indirect_byte, register='BC')
 get_indirect_byte_DE = partial(get_indirect_byte, register='DE')
 
 
+def get_indirect_byte_increment(cpu, register):
+    if cpu.debug:
+        cpu.debug_kwargs['source'] = '({0}+)'.format(register)
+
+    address = getattr(cpu, register)
+    setattr(cpu, register, address + 1)
+    return cpu.memory.read_byte(address)
+
+
+get_indirect_byte_increment_HL = partial(get_indirect_byte_increment, register='HL')
+
+
 def get_indirect_byte_immediate(cpu):
     address = cpu.read_next_short()
     if cpu.debug:
@@ -491,6 +503,7 @@ OPCODES = {
     0xe0: partial(load, cycles=12, get=get_register_A, write=write_indirect_offset_byte_immediate),
     0xf0: partial(load, cycles=12, get=get_indirect_offset_byte_immediate, write=write_register_A),
 
+    0x2a: partial(load, cycles=8, get=get_indirect_byte_increment_HL, write=write_register_A),
     0x22: partial(load, cycles=8, get=get_register_A, write=write_indirect_increment_HL),
 
     0xcb: cb_dispatch,
