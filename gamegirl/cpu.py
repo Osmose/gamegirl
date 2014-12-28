@@ -57,6 +57,7 @@ class CPU(object):
 
         self.memory = memory
         self.stack = Stack(self)
+        self.instruction_count = 0
         self.cycles = 0
 
         self.A = 0
@@ -81,7 +82,7 @@ class CPU(object):
 
     def read_and_execute(self):
         opcode = self.read_next_byte()
-        self.execute(opcode)
+        return self.execute(opcode)
 
     def read_next_byte(self):
         value = self.memory.read_byte(self.PC)
@@ -102,16 +103,11 @@ class CPU(object):
             self.debug_string = 'UNKNOWN'
             self.debug_kwargs = {}
 
-        try:
-            instruction(cpu=self)
-        except Exception:
-            # Log the opcode for debugging purposes.
-            print 'Opcode: ${0:02x}'.format(opcode)
-            print self.debug_string.format(**self.debug_kwargs)
-            raise
+        instruction(cpu=self)
+        self.instruction_count += 1
 
         if self.debug:
-            print self.debug_string.format(**self.debug_kwargs)
+            return self.debug_string.format(**self.debug_kwargs)
 
     def cycle(self, cycles):
         self.cycles += cycles

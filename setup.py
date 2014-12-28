@@ -28,7 +28,7 @@ setup(
     author_email='me@mkelly.me',
     url='https://github.com/Osmose/gamegirl',
     license='MIT',
-    install_requires=['docopt>=0.6'],
+    install_requires=['docopt>=0.6', 'urwid>=1.3.0'],
     include_package_data=True,
     entry_points={
       'console_scripts':[
