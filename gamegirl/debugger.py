@@ -43,6 +43,7 @@ class DebuggerInterface(object):
 
         self.palette = [
             ('titlebar', 'black', 'light gray'),
+            ('helpbar', 'black', 'dark cyan'),
             ('background', 'yellow', 'dark blue'),
             ('gutter', 'black', 'dark cyan'),
             ('register_name', 'white', 'dark cyan'),
@@ -53,6 +54,10 @@ class DebuggerInterface(object):
         ]
 
         self.titlebar = urwid.AttrMap(urwid.Text(('titlebar', 'GameGirl'), align='center'), 'titlebar')
+        self.helpbar = urwid.AttrMap(
+            urwid.Text(('helpbar', '  (N)ext instruction, (C)ontinue until error, (Q)uit'),
+                       align='left'),
+            'helpbar')
 
         # Instruction log
         self.log_walker = urwid.SimpleFocusListWalker([])
@@ -135,7 +140,7 @@ class DebuggerInterface(object):
             ('weight', 2, self.log_list),
             (35, urwid.AttrMap(self.sidebar, 'sidebar')),
         ])
-        self.top_frame = urwid.Frame(self.top_columns, header=self.titlebar)
+        self.top_frame = urwid.Frame(self.top_columns, header=self.titlebar, footer=self.helpbar)
         self.top = urwid.AttrMap(self.top_frame, 'background')
         self.loop = urwid.MainLoop(self.top, self.palette, unhandled_input=self.unhandled_input)
 
