@@ -54,6 +54,7 @@ class CPU(object):
         self.debug = debug
         self.debug_string = ''
         self.debug_kwargs = {}
+        self.debug_last_bytes = []
 
         self.memory = memory
         self.stack = Stack(self)
@@ -87,9 +88,14 @@ class CPU(object):
     def read_next_byte(self):
         value = self.memory.read_byte(self.PC)
         self.PC += 1
+        self.debug_last_bytes.append(value)
         return value
 
     def read_next_short(self):
+        byte1 = self.memory.read_byte(self.PC)
+        byte2 = self.memory.read_byte(self.PC + 1)
+        self.debug_last_bytes += [byte1, byte2]
+
         value = self.memory.read_short(self.PC)
         self.PC += 2
         return value
@@ -107,7 +113,9 @@ class CPU(object):
         self.instruction_count += 1
 
         if self.debug:
-            return self.debug_string.format(**self.debug_kwargs)
+            debug_bytes = self.debug_last_bytes
+            self.debug_last_bytes = []
+            return self.debug_string.format(**self.debug_kwargs), debug_bytes
 
     def cycle(self, cycles):
         self.cycles += cycles

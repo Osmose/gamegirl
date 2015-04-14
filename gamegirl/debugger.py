@@ -163,14 +163,18 @@ class DebuggerInterface(object):
             widget = getattr(self, 'flag_' + flag)
             widget.set_text(unicode(getattr(self.cpu, 'flag_' + flag)))
 
-    def log(self, text, lineno=''):
+    def log(self, text, lineno='', bytes=None):
         gutter_length = max(9, len(lineno))
         gutter = block_text(lineno, style='gutter', right=1, align='right')
+        columns = [(gutter_length, gutter), urwid.Text(text)]
 
-        self.log_walker.append(urwid.Columns([
-            (gutter_length, gutter),
-            urwid.Text(text),
-        ], dividechars=1))
+        if bytes:
+            byte_gutter_length = max(6, len(bytes) * 2) + 3
+            byte_string = '$' + ''.join(['{0:02x}'.format(b) for b in bytes])
+            byte_gutter = block_text(byte_string, style='gutter', left=1, align='left')
+            columns.append((byte_gutter_length, byte_gutter))
+
+        self.log_walker.append(urwid.Columns(columns, dividechars=1))
 
     def log_divider(self):
         self.log_walker.append(urwid.Divider(div_char='-'))
@@ -183,10 +187,11 @@ class DebuggerInterface(object):
             self.log('Execution has stopped, cannot continue.')
         else:
             try:
-                result = self.cpu.read_and_execute()
-                self.log(result, lineno=unicode(self.cpu.instruction_count))
+                lineno = '${0:04x}'.format(self.cpu.PC)
+                result, debug_bytes = self.cpu.read_and_execute()
+                self.log(result, lineno=lineno, bytes=debug_bytes)
                 self.log_focus_bottom()
-            except Exception as e:
+            except Exception:
                 self.log(traceback.format_exc())
                 self.stopped = True
 
@@ -206,4 +211,5 @@ class DebuggerInterface(object):
                 self.update_sidebar()
 
         if key in ('d', 'D'):
-            import pudb; pudb.set_trace()
+            import pudb
+            pudb.set_trace()

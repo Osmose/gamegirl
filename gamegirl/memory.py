@@ -161,7 +161,6 @@ class MappedRegisterMemory(object):
             raise ValueError('Missing register: ${0:02x}'.format(address))
 
 
-
 class Memory(object):
     def __init__(self, rom, bios):
         from gamegirl.registers import register_map
