@@ -150,19 +150,19 @@ class DebuggerInterface(object):
         self.top = urwid.AttrMap(self.top_frame, 'background')
         self.loop = urwid.MainLoop(self.top, self.palette, unhandled_input=self.unhandled_input)
 
-        self.show_instruction_mode()
+        self.enter_instruction_mode()
         self.update_sidebar()
 
     def start(self):
         self.loop.run()
 
-    def show_instruction_mode(self):
+    def enter_instruction_mode(self):
         self.top_columns.contents[0] = (self.log_list, self.top_columns.options('weight', 2))
         self.help_text.set_text('   (N)ext instruction, (C)ontinue until error, (M)emory mode, '
                                 '(Q)uit')
         self.mode = 'instruction'
 
-    def show_memory_mode(self):
+    def enter_memory_mode(self):
         self.update_memory_view()
         self.top_columns.contents[0] = (self.memory_list, self.top_columns.options('weight', 2))
         self.help_text.set_text('   (I)nstruction mode, (Q)uit')
@@ -225,17 +225,30 @@ class DebuggerInterface(object):
                 self.update_sidebar()
 
             if key in ('c', 'C'):
+                screen = self.loop.screen
+                user_stop = False
+                self.help_text.set_text('   (S)top')
+
                 self.execute()
                 self.update_sidebar()
-                while not self.stopped:
+                while not self.stopped and not user_stop:
                     self.execute()
                     self.update_sidebar()
+                    self.loop.draw_screen()
+
+                    # Since we're not running the main loop during this
+                    # command we need to manually handle input.
+                    keys, raw = screen.parse_input(None, None, screen.get_available_raw_input())
+                    for key in keys:
+                        if key in ('s', 'S'):
+                            user_stop = True
+                self.enter_instruction_mode()
 
             if key in ('m', 'M'):
-                self.show_memory_mode()
+                self.enter_memory_mode()
         elif self.mode == 'memory':
             if key in ('i', 'I'):
-                self.show_instruction_mode()
+                self.enter_instruction_mode()
 
         if key in ('d', 'D'):
             import pudb
