@@ -85,8 +85,8 @@ class CPU(object):
         opcode = self.read_next_byte()
         return self.execute(opcode)
 
-    def read_next_byte(self):
-        value = self.memory.read_byte(self.PC)
+    def read_next_byte(self, signed=False):
+        value = self.memory.read_byte(self.PC, signed=signed)
         self.PC += 1
         self.debug_last_bytes.append(value)
         return value

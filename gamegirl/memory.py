@@ -11,8 +11,9 @@ class ReadableMemory(object):
     def read_short(self, address):
         return self.unpack('<H', address, 2)[0]
 
-    def read_byte(self, address):
-        return self.unpack('<B', address, 1)[0]
+    def read_byte(self, address, signed=False):
+        format = 'b' if signed else 'B'
+        return self.unpack('<' + format, address, 1)[0]
 
     def read_bytes(self, start_address, end_address):
         count = end_address - start_address
@@ -112,8 +113,12 @@ class MappedRegister(object):
     def write(self, value):
         self.value = value & self.write_mask
 
-    def read(self):
-        return self.value & self.read_mask
+    def read(self, signed=False):
+        value = self.value & self.read_mask
+        if signed:
+            value = struct.unpack('b', value)[0]
+
+        return value
 
 
 class MappedRegisterMemory(object):
@@ -133,9 +138,9 @@ class MappedRegisterMemory(object):
         except KeyError:
             raise ValueError('Missing register: ${0:02x}'.format(address))
 
-    def read_byte(self, address):
+    def read_byte(self, address, signed=False):
         try:
-            return self.registers[address].read()
+            return self.registers[address].read(signed=signed)
         except KeyError:
             raise ValueError('Missing register: ${0:02x}'.format(address))
 
@@ -187,9 +192,9 @@ class Memory(object):
         memory, offset = self._get_memory(address, address + 2)
         memory.write_short(address - offset, value)
 
-    def read_byte(self, address):
+    def read_byte(self, address, signed=False):
         memory, offset = self._get_memory(address, address + 1)
-        return memory.read_byte(address - offset)
+        return memory.read_byte(address - offset, signed=signed)
 
     def write_byte(self, address, value):
         memory, offset = self._get_memory(address, address + 1)

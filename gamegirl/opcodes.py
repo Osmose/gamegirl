@@ -3,8 +3,8 @@ from functools import partial, wraps
 
 ## Reading Values ######################################################
 
-def get_immediate_byte(cpu):
-    value = cpu.read_next_byte()
+def get_immediate_byte(cpu, signed=False):
+    value = cpu.read_next_byte(signed=signed)
     if cpu.debug:
         cpu.debug_kwargs['source'] = '${0:02x}'.format(value)
 
@@ -197,9 +197,20 @@ is_flag_C_reset = partial(is_flag_reset, 'C')
 
 ## Utils ###############################################################
 def has_carry(a, b, bit):
+    """Test if the given bit has a carry when a is added to b."""
     mask = (2 ** bit) - 1
     result = (a & mask) + (b & mask)
-    return result >> (bit + 1)
+    return result >> bit
+
+
+def has_borrow(a, b, bit):
+    """
+    Test if the given bit borrows from the next when b is subtracted
+    from a.
+    """
+    mask = (2 ** bit) - 1
+    result = (a & mask) - (b & mask)
+    return result < 0
 
 
 ## Instructions ########################################################
@@ -278,6 +289,11 @@ def jump_condition(cpu, get, condition):
     value = get(cpu=cpu)
     if condition(cpu=cpu):
         cpu.PC += value
+
+
+@instruction('JR {source}')
+def jump(cpu, get):
+    cpu.PC += get(cpu=cpu, signed=True)
 
 
 def cb_dispatch(cpu):
@@ -379,6 +395,16 @@ def add_hl(cpu, get):
     cpu.flag_H = has_carry(value, cpu.HL, 11)
     cpu.flag_C = has_carry(value, cpu.HL, 15)
     cpu.HL += value
+
+
+@instruction('SUB {source}')
+def sub(cpu, get):
+    value = get(cpu=cpu)
+    cpu.flag_N = 1
+    cpu.flag_H = not has_borrow(cpu.A, value, 3)
+    cpu.flag_C = not has_borrow(cpu.A, value, 7)
+    cpu.A -= value
+    cpu.flag_Z = cpu.A == 0
 
 
 ## Jump Tables #########################################################
@@ -515,6 +541,7 @@ OPCODES = {
     0xd0: partial(op_return_condition, cycles=8, condition=is_flag_C_reset),
     0xd8: partial(op_return_condition, cycles=8, condition=is_flag_C_set),
 
+    0x18: partial(jump, cycles=8, get=get_immediate_byte),
     0x20: partial(jump_condition, cycles=8, get=get_immediate_byte, condition=is_flag_Z_reset),
     0x28: partial(jump_condition, cycles=8, get=get_immediate_byte, condition=is_flag_Z_set),
     0x30: partial(jump_condition, cycles=8, get=get_immediate_byte, condition=is_flag_C_reset),
@@ -568,6 +595,16 @@ OPCODES = {
     0x19: partial(add_hl, cycles=8, get=get_register_DE),
     0x29: partial(add_hl, cycles=8, get=get_register_HL),
     0x39: partial(add_hl, cycles=8, get=get_register_SP),
+
+    0x97: partial(sub, cycles=4, get=get_register_A),
+    0x90: partial(sub, cycles=4, get=get_register_B),
+    0x91: partial(sub, cycles=4, get=get_register_C),
+    0x92: partial(sub, cycles=4, get=get_register_D),
+    0x93: partial(sub, cycles=4, get=get_register_E),
+    0x94: partial(sub, cycles=4, get=get_register_H),
+    0x95: partial(sub, cycles=4, get=get_register_L),
+    0x96: partial(sub, cycles=8, get=get_indirect_byte_HL),
+    0xd6: partial(sub, cycles=8, get=get_immediate_byte),
 }
 
 
