@@ -27,11 +27,11 @@ class Stack(object):
         self.cpu = cpu
 
     def push_short(self, value):
-        self.cpu.memory.write_short(self.cpu.SP - 1, value)
+        self.cpu.memory.write_short(self.cpu.SP - 2, value)
         self.cpu.SP -= 2
 
     def pop_short(self):
-        value = self.cpu.memory.read_short(self.cpu.SP - 1)
+        value = self.cpu.memory.read_short(self.cpu.SP)
         self.cpu.SP += 2
         return value
 
