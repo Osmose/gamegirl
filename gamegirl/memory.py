@@ -126,7 +126,6 @@ class MappedRegisterMemory(object):
             if register.name:
                 self.named_registers[register.name] = register
 
-
     def read_short(self, address):
         try:
             return (self.registers[address].read() &

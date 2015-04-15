@@ -36,6 +36,7 @@ def sidebar_value(text):
 class DebuggerInterface(object):
     def __init__(self, cpu):
         self.cpu = cpu
+        self.mode = None
         cpu.debug = True
         rom = cpu.memory.rom
 
@@ -54,14 +55,19 @@ class DebuggerInterface(object):
         ]
 
         self.titlebar = urwid.AttrMap(urwid.Text(('titlebar', 'GameGirl'), align='center'), 'titlebar')
-        self.helpbar = urwid.AttrMap(
-            urwid.Text(('helpbar', '  (N)ext instruction, (C)ontinue until error, (Q)uit'),
-                       align='left'),
-            'helpbar')
+        self.help_text = urwid.Text((
+            'helpbar',
+            ''
+        ), align='left')
+        self.helpbar = urwid.AttrMap(self.help_text, 'helpbar')
 
         # Instruction log
         self.log_walker = urwid.SimpleFocusListWalker([])
         self.log_list = urwid.ListBox(self.log_walker)
+
+        # Memory view
+        self.memory_walker = urwid.SimpleFocusListWalker([])
+        self.memory_list = urwid.ListBox(self.memory_walker)
 
         # Sidebar
         register_grid = []
@@ -144,10 +150,23 @@ class DebuggerInterface(object):
         self.top = urwid.AttrMap(self.top_frame, 'background')
         self.loop = urwid.MainLoop(self.top, self.palette, unhandled_input=self.unhandled_input)
 
+        self.show_instruction_mode()
         self.update_sidebar()
 
     def start(self):
         self.loop.run()
+
+    def show_instruction_mode(self):
+        self.top_columns.contents[0] = (self.log_list, self.top_columns.options('weight', 2))
+        self.help_text.set_text('   (N)ext instruction, (C)ontinue until error, (M)emory mode, '
+                                '(Q)uit')
+        self.mode = 'instruction'
+
+    def show_memory_mode(self):
+        self.update_memory_view()
+        self.top_columns.contents[0] = (self.memory_list, self.top_columns.options('weight', 2))
+        self.help_text.set_text('   (I)nstruction mode, (Q)uit')
+        self.mode = 'memory'
 
     def update_sidebar(self):
         for register in ('A', 'B', 'C', 'D', 'E', 'F', 'H', 'L', 'SP', 'PC'):
@@ -163,7 +182,7 @@ class DebuggerInterface(object):
             widget = getattr(self, 'flag_' + flag)
             widget.set_text(unicode(getattr(self.cpu, 'flag_' + flag)))
 
-    def log(self, text, lineno='', bytes=None):
+    def log(self, text, lineno='', bytes=None, walker=None):
         gutter_length = max(9, len(lineno))
         gutter = block_text(lineno, style='gutter', right=1, align='right')
         columns = [(gutter_length, gutter), urwid.Text(text)]
@@ -174,7 +193,8 @@ class DebuggerInterface(object):
             byte_gutter = block_text(byte_string, style='gutter', left=1, align='left')
             columns.append((byte_gutter_length, byte_gutter))
 
-        self.log_walker.append(urwid.Columns(columns, dividechars=1))
+        walker = walker if walker is not None else self.log_walker
+        walker.append(urwid.Columns(columns, dividechars=1))
 
     def log_divider(self):
         self.log_walker.append(urwid.Divider(div_char='-'))
@@ -199,17 +219,38 @@ class DebuggerInterface(object):
         if key in ('q', 'Q'):
             raise urwid.ExitMainLoop()
 
-        if key in ('n', 'N'):
-            self.execute()
-            self.update_sidebar()
-
-        if key in ('c', 'C'):
-            self.execute()
-            self.update_sidebar()
-            while not self.stopped:
+        if self.mode == 'instruction':
+            if key in ('n', 'N'):
                 self.execute()
                 self.update_sidebar()
+
+            if key in ('c', 'C'):
+                self.execute()
+                self.update_sidebar()
+                while not self.stopped:
+                    self.execute()
+                    self.update_sidebar()
+
+            if key in ('m', 'M'):
+                self.show_memory_mode()
+        elif self.mode == 'memory':
+            if key in ('i', 'I'):
+                self.show_instruction_mode()
 
         if key in ('d', 'D'):
             import pudb
             pudb.set_trace()
+
+    def update_memory_view(self):
+        del self.memory_walker[:]
+        memory_string = ''
+        for addr in range(0x10000):
+            try:
+                memory_string += '{0:02x} '.format(self.cpu.memory.read_byte(addr))
+            except ValueError:
+                memory_string += '-- '
+
+            if addr % 16 == 15:
+                self.log(memory_string, walker=self.memory_walker,
+                         lineno='${0:04x}'.format(addr - 15))
+                memory_string = ''
