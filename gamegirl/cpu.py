@@ -17,7 +17,10 @@ def flag(bit):
         return (self.F >> bit) & 0x1
 
     def setter(self, value):
-        self.F = self.F | (value << bit)
+        if value:
+            self.F = self.F | (1 << bit)
+        else:
+            self.F = self.F & ~(1 << bit)
 
     return property(getter, setter)
 
