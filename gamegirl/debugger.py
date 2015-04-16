@@ -1,3 +1,5 @@
+import logging
+import logging.config
 import traceback
 
 import urwid
@@ -33,6 +35,16 @@ def sidebar_value(text):
                          width=('relative', 100), right=2, left=4)
 
 
+class DebuggerLogHandler(logging.Handler):
+    def __init__(self, *args, **kwargs):
+        self.debugger = kwargs.pop('debugger')
+        super(DebuggerLogHandler, self).__init__(*args, **kwargs)
+
+    def emit(self, record):
+        self.debugger.log(record.getMessage(), lineno=record.levelname,
+                          walker=self.debugger.log_walker)
+
+
 class DebuggerInterface(object):
     def __init__(self, cpu):
         self.cpu = cpu
@@ -62,6 +74,10 @@ class DebuggerInterface(object):
         self.helpbar = urwid.AttrMap(self.help_text, 'helpbar')
 
         # Instruction log
+        self.instruction_walker = urwid.SimpleFocusListWalker([])
+        self.instruction_list = urwid.ListBox(self.instruction_walker)
+
+        # Debug log
         self.log_walker = urwid.SimpleFocusListWalker([])
         self.log_list = urwid.ListBox(self.log_walker)
 
@@ -143,7 +159,7 @@ class DebuggerInterface(object):
 
         # Main layout and loop
         self.top_columns = urwid.Columns([
-            ('weight', 2, self.log_list),
+            ('weight', 2, self.instruction_list),
             (35, urwid.AttrMap(self.sidebar, 'sidebar')),
         ])
         self.top_frame = urwid.Frame(self.top_columns, header=self.titlebar, footer=self.helpbar)
@@ -153,20 +169,40 @@ class DebuggerInterface(object):
         self.enter_instruction_mode()
         self.update_sidebar()
 
+        logging.config.dictConfig({
+            'version': 1,
+            'handlers': {
+                'debugger': {
+                    'class': 'gamegirl.debugger.DebuggerLogHandler',
+                    'level': 'DEBUG',
+                    'debugger': self
+                }
+            },
+            'root': {
+                'level': 'DEBUG',
+                'handlers': ['debugger']
+            }
+        })
+
     def start(self):
         self.loop.run()
 
     def enter_instruction_mode(self):
-        self.top_columns.contents[0] = (self.log_list, self.top_columns.options('weight', 2))
+        self.top_columns.contents[0] = (self.instruction_list, self.top_columns.options('weight', 2))
         self.help_text.set_text('   (N)ext instruction, (C)ontinue until error, (M)emory mode, '
-                                '(Q)uit')
+                                '(L)og mode, (Q)uit')
         self.mode = 'instruction'
 
     def enter_memory_mode(self):
         self.update_memory_view()
         self.top_columns.contents[0] = (self.memory_list, self.top_columns.options('weight', 2))
-        self.help_text.set_text('   (I)nstruction mode, (Q)uit')
+        self.help_text.set_text('   (I)nstruction mode, (L)og mode, (Q)uit')
         self.mode = 'memory'
+
+    def enter_log_mode(self):
+        self.top_columns.contents[0] = (self.log_list, self.top_columns.options('weight', 2))
+        self.help_text.set_text('   (I)nstruction mode, (M)emory mode, (Q)uit')
+        self.mode = 'log'
 
     def update_sidebar(self):
         for register in ('A', 'B', 'C', 'D', 'E', 'F', 'H', 'L', 'SP', 'PC'):
@@ -193,14 +229,14 @@ class DebuggerInterface(object):
             byte_gutter = block_text(byte_string, style='gutter', left=1, align='left')
             columns.append((byte_gutter_length, byte_gutter))
 
-        walker = walker if walker is not None else self.log_walker
+        walker = walker if walker is not None else self.instruction_walker
         walker.append(urwid.Columns(columns, dividechars=1))
 
     def log_divider(self):
-        self.log_walker.append(urwid.Divider(div_char='-'))
+        self.instruction_walker.append(urwid.Divider(div_char='-'))
 
     def log_focus_bottom(self):
-        self.log_walker.set_focus(len(self.log_walker) - 1)
+        self.instruction_walker.set_focus(len(self.instruction_walker) - 1)
 
     def execute(self):
         if self.stopped:
@@ -244,11 +280,14 @@ class DebuggerInterface(object):
                             user_stop = True
                 self.enter_instruction_mode()
 
-            if key in ('m', 'M'):
-                self.enter_memory_mode()
-        elif self.mode == 'memory':
-            if key in ('i', 'I'):
-                self.enter_instruction_mode()
+        if key in ('m', 'M'):
+            self.enter_memory_mode()
+
+        if key in ('i', 'I'):
+            self.enter_instruction_mode()
+
+        if key in ('l', 'L'):
+            self.enter_log_mode()
 
         if key in ('d', 'D'):
             import pudb
