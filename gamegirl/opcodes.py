@@ -288,7 +288,7 @@ def swap(cpu, get, write):
 
 @instruction('JR {condition},{source}')
 def jump_condition(cpu, get, condition):
-    value = get(cpu=cpu)
+    value = get(cpu=cpu, signed=True)
     if condition(cpu=cpu):
         cpu.PC += value
 
@@ -334,6 +334,14 @@ def call(cpu, get):
     address = get(cpu=cpu)
     cpu.stack.push_short(cpu.PC)
     cpu.PC = address
+
+
+@instruction('CALL {condition},{source}')
+def call_condition(cpu, get, condition):
+    address = get(cpu=cpu)
+    result = condition(cpu=cpu)
+    if result:
+        cpu.PC = address
 
 
 @instruction('RET')
@@ -536,7 +544,13 @@ OPCODES = {
     0x22: partial(load, cycles=8, get=get_register_A, write=write_indirect_increment_HL),
 
     0xcb: cb_dispatch,
+
     0xcd: partial(call, cycles=12, get=get_immediate_short),
+    0xc4: partial(call_condition, cycles=12, get=get_immediate_short, condition=is_flag_Z_reset),
+    0xcc: partial(call_condition, cycles=12, get=get_immediate_short, condition=is_flag_Z_set),
+    0xd4: partial(call_condition, cycles=12, get=get_immediate_short, condition=is_flag_C_reset),
+    0xdc: partial(call_condition, cycles=12, get=get_immediate_short, condition=is_flag_C_set),
+
     0xc9: partial(op_return, cycles=8),
 
     0xc0: partial(op_return_condition, cycles=8, condition=is_flag_Z_reset),
@@ -571,6 +585,10 @@ OPCODES = {
     0x25: partial(decrement, cycles=4, get=get_register_H, write=write_register_H),
     0x2d: partial(decrement, cycles=4, get=get_register_L, write=write_register_L),
     0x35: partial(decrement, cycles=12, get=get_indirect_byte_HL, write=write_indirect_byte_HL),
+    0x0b: partial(decrement, cycles=8, get=get_register_BC, write=write_register_BC),
+    0x1b: partial(decrement, cycles=8, get=get_register_DE, write=write_register_DE),
+    0x2b: partial(decrement, cycles=8, get=get_register_HL, write=write_register_HL),
+    0x3b: partial(decrement, cycles=8, get=get_register_SP, write=write_register_SP),
 
     0x17: partial(rotate_left, cycles=4, get=get_register_A, write=write_register_A, rla=True),
 
