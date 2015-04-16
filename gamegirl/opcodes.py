@@ -295,8 +295,8 @@ def jump_condition(cpu, get, condition):
 
 @instruction('JR {source}')
 def jump(cpu, get):
-    logging.debug('JR at PC: {0:04x}'.format(cpu.PC))
-    cpu.PC += get(cpu=cpu, signed=True)
+    value = get(cpu=cpu, signed=True)
+    cpu.PC += value
 
 
 def cb_dispatch(cpu):

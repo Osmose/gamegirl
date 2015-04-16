@@ -202,6 +202,7 @@ class DebuggerInterface(object):
     def enter_log_mode(self):
         self.top_columns.contents[0] = (self.log_list, self.top_columns.options('weight', 2))
         self.help_text.set_text('   (I)nstruction mode, (M)emory mode, (Q)uit')
+        self.log_focus_bottom(walker=self.log_walker)
         self.mode = 'log'
 
     def update_sidebar(self):
@@ -235,8 +236,9 @@ class DebuggerInterface(object):
     def log_divider(self):
         self.instruction_walker.append(urwid.Divider(div_char='-'))
 
-    def log_focus_bottom(self):
-        self.instruction_walker.set_focus(len(self.instruction_walker) - 1)
+    def log_focus_bottom(self, walker=None):
+        walker = walker if walker is not None else self.instruction_walker
+        walker.set_focus(len(walker) - 1)
 
     def execute(self):
         if self.stopped:
