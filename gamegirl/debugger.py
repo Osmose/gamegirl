@@ -188,22 +188,34 @@ class DebuggerInterface(object):
         self.loop.run()
 
     def enter_instruction_mode(self):
-        self.top_columns.contents[0] = (self.instruction_list, self.top_columns.options('weight', 2))
-        self.help_text.set_text('   (N)ext instruction, (C)ontinue until error, (M)emory mode, '
-                                '(L)og mode, (Q)uit')
+        self.set_main(self.instruction_list)
+        self.set_help(
+            '(N)ext instruction',
+            '(C)ontinue until error',
+            '(W)atch until error',
+            '(M)emory mode',
+            '(L)og mode',
+            '(Q)uit'
+        )
         self.mode = 'instruction'
 
     def enter_memory_mode(self):
         self.update_memory_view()
-        self.top_columns.contents[0] = (self.memory_list, self.top_columns.options('weight', 2))
-        self.help_text.set_text('   (I)nstruction mode, (L)og mode, (Q)uit')
+        self.set_main(self.memory_list)
+        self.set_help('(I)nstruction mode', '(L)og mode', '(Q)uit')
         self.mode = 'memory'
 
     def enter_log_mode(self):
-        self.top_columns.contents[0] = (self.log_list, self.top_columns.options('weight', 2))
-        self.help_text.set_text('   (I)nstruction mode, (M)emory mode, (Q)uit')
+        self.set_main(self.log_list)
+        self.set_help('(I)nstruction mode', '(M)emory mode', '(Q)uit')
         self.log_focus_bottom(walker=self.log_walker)
         self.mode = 'log'
+
+    def set_main(self, widget):
+        self.top_columns.contents[0] = (widget, self.top_columns.options('weight', 2))
+
+    def set_help(self, *items):
+        self.help_text.set_text('   ' + ', '.join(items))
 
     def update_sidebar(self):
         for register in ('A', 'B', 'C', 'D', 'E', 'F', 'H', 'L', 'SP', 'PC'):
@@ -262,17 +274,18 @@ class DebuggerInterface(object):
                 self.execute()
                 self.update_sidebar()
 
-            if key in ('c', 'C'):
+            if key in ('c', 'C', 'w', 'W'):
                 screen = self.loop.screen
                 user_stop = False
+                watch = key in ('w', 'W')
                 self.help_text.set_text('   (S)top')
 
                 self.execute()
-                self.update_sidebar()
                 while not self.stopped and not user_stop:
                     self.execute()
-                    self.update_sidebar()
-                    self.loop.draw_screen()
+                    if watch:
+                        self.update_sidebar()
+                        self.loop.draw_screen()
 
                     # Since we're not running the main loop during this
                     # command we need to manually handle input.
@@ -280,6 +293,8 @@ class DebuggerInterface(object):
                     for key in keys:
                         if key in ('s', 'S'):
                             user_stop = True
+
+                self.update_sidebar()
                 self.enter_instruction_mode()
 
         if key in ('m', 'M'):
