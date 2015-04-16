@@ -191,8 +191,8 @@ class DebuggerInterface(object):
         self.set_main(self.instruction_list)
         self.set_help(
             '(N)ext instruction',
-            '(C)ontinue until error',
-            '(W)atch until error',
+            '(C)ontinue',
+            '(W)atch',
             '(M)emory mode',
             '(L)og mode',
             '(Q)uit'
@@ -278,7 +278,9 @@ class DebuggerInterface(object):
                 screen = self.loop.screen
                 user_stop = False
                 watch = key in ('w', 'W')
-                self.help_text.set_text('   (S)top')
+
+                self.set_help('Running instructions, hit S to (S)top')
+                self.loop.draw_screen()
 
                 self.execute()
                 while not self.stopped and not user_stop:
