@@ -166,6 +166,16 @@ class NR52(MappedRegister):
 class LCDC(MappedRegister):
     """LCD Control"""
     name = 'lcdc'
+    reset_value = 0x91
+
+    bg_window_display = register_attribute(0b1)
+    obj_display = register_attribute(0b10)
+    obj_size = register_attribute(0b100)
+    bg_tilemap_display = register_attribute(0b1000)
+    bg_window_tile_data = register_attribute(0b10000)
+    window_display = register_attribute(0b100000)
+    window_tile_map_display = register_attribute(0b1000000)
+    lcd_control = register_attribute(0b10000000)
 
 
 class STAT(MappedRegister):

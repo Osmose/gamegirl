@@ -1,4 +1,5 @@
 import struct
+from collections import MutableSequence
 
 
 class ReadableMemory(object):
@@ -204,6 +205,9 @@ class Memory(object):
         memory, offset = self._get_memory(start_address, end_address)
         return memory.read_bytes(start_address - offset, end_address - offset)
 
+    def get_view(self, start_address, end_address):
+        return ByteMemoryView(self, start_address, end_address)
+
     def _get_memory(self, start_address, end_address):
         # Special case: While the bios is enabled, it replaces the first
         # 256 bytes of memory.
@@ -246,3 +250,37 @@ class Memory(object):
 
         raise ValueError('Invalid memory range: 0x{0:04x} - 0x{1:04x}'
                          .format(start_address, end_address))
+
+    def __getattr__(self, attr):
+        if attr in self.io_ports.named_registers:
+            return self.io_ports.named_registers[attr]
+        else:
+            raise AttributeError(attr)
+
+
+class ByteMemoryView(MutableSequence):
+    """View into a segment of memory as an array of bytes. Reading and
+    writing updates the underlying memory using read_byte and
+    write_byte.
+
+    """
+    def __init__(self, memory, range_start, range_end):
+        """range_start is inclusive, range_end is exclusive."""
+        self.memory = memory
+        self.range_start = range_start
+        self.range_end = range_end
+
+    def __getitem__(self, index):
+        return self.memory.read_byte(self.range_start + index)
+
+    def __setitem__(self, index, value):
+        self.memory.write_byte(self.range_start + index, value)
+
+    def __delitem__(self, index):
+        raise TypeError('Cannot delete memory, silly billy.')
+
+    def __len__(self):
+        return self.range_end - self.range_start
+
+    def insert(self, index, value):
+        raise TypeError('Cannot create new memory, silly billy.')
