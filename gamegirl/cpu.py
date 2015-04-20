@@ -1,3 +1,4 @@
+from gamegirl.graphics import Graphics
 from gamegirl.opcodes import OPCODES
 
 
@@ -75,6 +76,8 @@ class CPU(object):
         self.PC = 0
         self.SP = 0
 
+        self.graphics = Graphics(self)
+
     def __setattr__(self, name, value):
         # Keep registers limited to the right size.
         if name in self.BYTE_REGISTERS:
@@ -122,3 +125,4 @@ class CPU(object):
 
     def cycle(self, cycles):
         self.cycles += cycles
+        self.graphics.cycle(cycles)

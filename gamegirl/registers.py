@@ -182,6 +182,8 @@ class STAT(MappedRegister):
     """LCDC Status"""
     name = 'stat'
 
+    mode = register_attribute(0b10)
+
 
 class SCY(MappedRegister):
     """Scroll Y"""

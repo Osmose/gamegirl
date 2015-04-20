@@ -231,7 +231,7 @@ class DebuggerInterface(object):
             widget = getattr(self, 'flag_' + flag)
             widget.set_text(unicode(getattr(self.cpu, 'flag_' + flag)))
 
-    def log(self, text, lineno='', bytes=None, walker=None):
+    def log(self, text, lineno='', bytes=None, walker=None, limit=None):
         gutter_length = max(9, len(lineno))
         gutter = block_text(lineno, style='gutter', right=1, align='right')
         columns = [(gutter_length, gutter), urwid.Text(text)]
@@ -244,6 +244,8 @@ class DebuggerInterface(object):
 
         walker = walker if walker is not None else self.instruction_walker
         walker.append(urwid.Columns(columns, dividechars=1))
+        if limit and len(walker) > limit:
+            walker.pop(0)
 
     def log_divider(self):
         self.instruction_walker.append(urwid.Divider(div_char='-'))
@@ -259,7 +261,7 @@ class DebuggerInterface(object):
             try:
                 lineno = '${0:04x}'.format(self.cpu.PC)
                 result, debug_bytes = self.cpu.read_and_execute()
-                self.log(result, lineno=lineno, bytes=debug_bytes)
+                self.log(result, lineno=lineno, bytes=debug_bytes, limit=1000)
                 self.log_focus_bottom()
             except Exception:
                 self.log(traceback.format_exc())

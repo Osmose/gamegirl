@@ -32,8 +32,8 @@ class Tile(object):
 class Background(object):
     def __init__(self, cpu):
         self.cpu = cpu
-        self.unsigned_tiles = TilePatternTable(cpu.memory.get_view(0x8000, 0x9000))
-        self.signed_tiles = TilePatternTable(cpu.memory.get_view(0x8800, 0x9800))
+        self.unsigned_tiles = TilePatternTable(cpu.memory.get_view(0x8000, 0x9000), signed=False)
+        self.signed_tiles = TilePatternTable(cpu.memory.get_view(0x8800, 0x9800), signed=True)
         self.bg_tilemap_1 = cpu.memory.get_view(0x9800, 0x9c00)
         self.bg_tilemap_2 = cpu.memory.get_view(0x9c00, 0xa000)
 
@@ -65,6 +65,37 @@ class Background(object):
 
 
 class Graphics(object):
+    MODE_HBLANK = 0
+    MODE_VBLANK = 1
+    MODE_OAM = 2
+    MODE_VRAM = 3
+
     def __init__(self, cpu):
         self.cpu = cpu
         self.background = Background(cpu)
+        self.cycles = 0
+
+    def cycle(self, cycles):
+        self.cycles += cycles
+
+        if self.cpu.memory.stat.mode == self.MODE_OAM and self.cycles >= 80:
+            self.cpu.memory.stat.mode = self.MODE_VRAM
+            self.cycles -= 80
+
+        if self.cpu.memory.stat.mode == self.MODE_VRAM and self.cycles >= 172:
+            self.cpu.memory.stat.mode = self.MODE_HBLANK
+            self.cycles -= 172
+
+        if self.cpu.memory.stat.mode == self.MODE_HBLANK and self.cycles >= 204:
+            self.cpu.memory.ly.value += 1
+            self.cycles -= 204
+
+            if self.cpu.memory.ly.value >= 144:
+                self.cpu.memory.stat.mode = self.MODE_VBLANK
+            else:
+                self.cpu.memory.stat.mode = self.MODE_OAM
+
+        if self.cpu.memory.stat.mode == self.MODE_VBLANK and self.cycles >= 4560:
+            self.cpu.memory.ly.value = 0
+            self.cpu.memory.stat.mode = self.MODE_OAM
+            self.cycles -= 4560

@@ -94,7 +94,7 @@ def register_attribute(mask):
     def setter(self, value):
         value = value & (mask >> shift)  # Mask value to proper length.
         self.value = self.value ^ (self.value & mask)  # Clear bits.
-        self.value = self.value & (value << shift)  # Write new bits.
+        self.value = self.value | (value << shift)  # Write new bits.
 
     return property(getter, setter)
 
@@ -271,7 +271,12 @@ class ByteMemoryView(MutableSequence):
         self.range_end = range_end
 
     def __getitem__(self, index):
-        return self.memory.read_byte(self.range_start + index)
+        # If a slice was requested, return a new view. We don't bother
+        # supporting steps quite yet.
+        if isinstance(index, slice):
+            return ByteMemoryView(self.memory, index.start, index.stop)
+        else:
+            return self.memory.read_byte(self.range_start + index)
 
     def __setitem__(self, index, value):
         self.memory.write_byte(self.range_start + index, value)
